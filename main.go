@@ -56,7 +56,7 @@ func main() {
 		Dir:      *stateDir,
 		Hostname: *hostname,
 		Logf: func(format string, args ...any) {
-			slog.Info(fmt.Sprintf(format, args...), "component", "tsnet")
+			slog.Info(fmt.Sprintf(format, args...), slog.String("scope", "tsnet"))
 		},
 		ControlURL: *loginServer,
 	}
@@ -92,6 +92,10 @@ func main() {
 			// go-socks5 provides addr as host:port (host may be a DNS name).
 			return s.Dial(dialCtx, network, addr)
 		},
+		Logger: slog.NewLogLogger(
+			slog.Default().With(slog.String("scope", "socks")).Handler(),
+			slog.LevelInfo,
+		),
 	})
 	if err != nil {
 		kitslog.FatalError(slog.Default(), "error creating socks5 server", err)
