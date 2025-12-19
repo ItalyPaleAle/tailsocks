@@ -13,6 +13,7 @@ import (
 	"github.com/armon/go-socks5"
 	"github.com/italypaleale/go-kit/signals"
 	kitslog "github.com/italypaleale/go-kit/slog"
+	"github.com/italypaleale/tailsocks/buildinfo"
 	"github.com/lmittmann/tint"
 	isatty "github.com/mattn/go-isatty"
 	"github.com/spf13/pflag"
@@ -31,11 +32,16 @@ func main() {
 		allowLAN    = pflag.BoolP("exit-node-allow-lan-access", "l", false, "Allow access to local LAN while using exit node")
 		loginServer = pflag.StringP("login-server", "c", "", "Optional control server URL (e.g. https://controlplane.tld for Headscale)")
 		showHelp    = pflag.BoolP("help", "h", false, "Show this help message")
+		showVersion = pflag.BoolP("version", "v", false, "Show version")
 	)
 	pflag.Parse()
 
-	if *showHelp {
+	switch {
+	case *showHelp:
 		pflag.Usage()
+		os.Exit(0)
+	case *showVersion:
+		fmt.Printf("%s %s - build: %s\n", buildinfo.AppName, buildinfo.AppVersion, buildinfo.BuildDescription)
 		os.Exit(0)
 	}
 
