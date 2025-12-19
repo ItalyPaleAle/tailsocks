@@ -1,0 +1,82 @@
+# Defines the configuration version.
+# The only possible value is "2".
+version: "2"
+
+linters:
+  # Default set of linters.
+  # The value can be:
+  # - `standard`: https://golangci-lint.run/docs/linters/golangci-lint linters#enabled-by-default
+  # - `all`: enables all linters by default.
+  # - `none`: disables all linters by default.
+  # - `fast`: enables only linters considered as "fast" (`golangci-lint help linters --json | jq '[ .[] | select(.fast==true) ] | map(.name)'`).
+  # Default: standard
+  default: all
+
+  # Enable specific linters
+  enable: []
+
+  exclusions:
+    paths:
+      - "tools/gen-config"
+
+  # Disable specific linters.
+  disable:
+    - cyclop
+    - depguard
+    - dupl
+    - exhaustruct
+    - err113
+    - funcorder
+    - funlen
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - godot
+    - ireturn
+    - lll
+    - mnd
+    - nestif
+    - nlreturn
+    - nolintlint
+    - nonamedreturns
+    - paralleltest
+    - revive
+    - testpackage
+    - varnamelen
+    - wsl
+    - wsl_v5
+
+formatters:
+  # Enable specific formatter.
+  # Default: [] (uses standard Go formatting)
+  enable: []
+
+# Options for analysis running.
+run:
+  # Timeout for total work, e.g. 30s, 5m, 5m30s.
+  # If the value is lower or equal to 0, the timeout is disabled.
+  # Default: 0 (disabled)
+  timeout: 5m
+
+  # The mode used to evaluate relative paths.
+  # It's used by exclusions, Go plugins, and some linters.
+  # The value can be:
+  # - `gomod`: the paths will be relative to the directory of the `go.mod` file.
+  # - `gitroot`: the paths will be relative to the git root (the parent directory of `.git`).
+  # - `cfg`: the paths will be relative to the configuration file.
+  # - `wd` (NOT recommended): the paths will be relative to the place where golangci-lint is run.
+  # Default: cfg
+  relative-path-mode: cfg
+
+  # Exit code when at least one issue was found.
+  # Default: 1
+  issues-exit-code: 1
+
+  # Include test files or not.
+  # Default: true
+  tests: true
+
+  # List of build tags, all linters use it.
+  # Default: []
+  build-tags:
+    - unit

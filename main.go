@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -41,7 +42,7 @@ func main() {
 	setLogger()
 
 	if *exitNode == "" {
-		kitslog.FatalError(slog.Default(), "missing --exit-node (IP like 100.x or MagicDNS base name)", fmt.Errorf("exit-node flag is required"))
+		kitslog.FatalError(slog.Default(), "missing --exit-node (IP like 100.x or MagicDNS base name)", errors.New("exit-node flag is required"))
 	}
 
 	key := strings.TrimSpace(*authKey)
@@ -101,7 +102,8 @@ func main() {
 		kitslog.FatalError(slog.Default(), "error creating socks5 server", err)
 	}
 
-	l, err := net.Listen("tcp", *socksAddr)
+	nlc := net.ListenConfig{}
+	l, err := nlc.Listen(ctx, "tcp", *socksAddr)
 	if err != nil {
 		kitslog.FatalError(slog.Default(), "listen SOCKS failed", err)
 	}
@@ -161,7 +163,7 @@ func setExitNodePrefs(ctx context.Context, lc *local.Client, exitNodeSel string,
 	} else {
 		fullStatus, err := lc.Status(ctx)
 		if err != nil {
-			return fmt.Errorf("Status (for MagicDNS exit node resolution): %w", err)
+			return fmt.Errorf("Status (for MagicDNS exit node resolution): %w", err) //nolint:staticcheck
 		}
 		err = np.SetExitNodeIP(exitNodeSel, fullStatus)
 		if err != nil {

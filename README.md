@@ -90,7 +90,7 @@ tailsocks --exit-node home-server --login-server https://headscale.example.com
 
 ## Command-Line Options
 
-```
+```text
   -a, --socks-addr string                SOCKS5 listen address (default "127.0.0.1:5040")
   -s, --state-dir string                 Directory to store tsnet state (default "./tsnet-state")
   -n, --hostname string                  Tailscale node name (default "tailsocks")
@@ -106,12 +106,14 @@ tailsocks --exit-node home-server --login-server https://headscale.example.com
 ### Web Browsers
 
 **Firefox:**
+
 1. Settings → Network Settings → Configure how Firefox connects to the internet
 2. Select "Manual proxy configuration"
 3. SOCKS Host: `127.0.0.1`, Port: `5040`
 4. Select "SOCKS v5"
 
 **Chrome/Chromium:**
+
 ```sh
 chrome --proxy-server="socks5://127.0.0.1:5040"
 ```
