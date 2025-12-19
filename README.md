@@ -21,16 +21,40 @@ TailSocks creates a local SOCKS5 proxy server that automatically routes all traf
 
 ## Installation
 
+### Pre-built binaries
+
+You can download the latest version of TailSocks from the [**Releases page**](https://github.com/italypaleale/tailsocks/releases) page.
+
+Fetch the correct archive for your system and architecture, then extract the files and copy the `tailsocks` binary to `/usr/local/bin` or another folder.
+
+### Using Docker/Podman
+
+You can run TailSocks as a Docker/Podman container. Container images are available for Linux and support amd64, arm64, and armv7/armhf.
+
+```sh
+# For podman, replace "docker run" with "podman run"
+docker run \
+  -d \
+  --rm \
+  ghcr.io/italypaleale/tailsocks:1
+```
+
+> TailSocks follows semver for versioning. The command above uses the latest version in the 1.x branch. We do not publish a container image tagged "latest".
+
+### Build from source
+
+Using `go install`:
+
 ```sh
 go install github.com/italypaleale/tailsocks@latest
 ```
 
-Or build from source:
+Or clone from the Git repo:
 
 ```sh
 git clone https://github.com/italypaleale/tailsocks
 cd tailsocks
-go build
+go build -o tailsocks
 ```
 
 ## Quick Start
@@ -98,6 +122,7 @@ tailsocks --exit-node home-server --login-server https://headscale.example.com
   -x, --exit-node string                 Exit node: IP or MagicDNS name (required)
   -l, --exit-node-allow-lan-access       Allow LAN access while using exit node
   -c, --login-server string              Custom control server URL (e.g., Headscale)
+  -v, --version                          Show application version
   -h, --help                             Show help message
 ```
 
