@@ -127,7 +127,7 @@ jobs:
               -ldflags "${BUILD_LDFLAGS}" \
               -o .bin/tailsocks-${{ env.BUILD_ID }}-macos-x64/tailsocks \
               -trimpath \
-              ./cmd/tailsocks
+              ./
           cp LICENSE.md .bin/tailsocks-${{ env.BUILD_ID }}-macos-x64
           cp -r README.md docs .bin/tailsocks-${{ env.BUILD_ID }}-macos-x64
           (cd .bin && tar -czvf ../.out/tailsocks-${{ env.BUILD_ID }}-macos-x64.tar.gz tailsocks-${{ env.BUILD_ID }}-macos-x64)
@@ -139,7 +139,7 @@ jobs:
               -ldflags "${BUILD_LDFLAGS}" \
               -o .bin/tailsocks-${{ env.BUILD_ID }}-macos-arm64/tailsocks \
               -trimpath \
-              ./cmd/tailsocks
+              ./
           cp LICENSE.md .bin/tailsocks-${{ env.BUILD_ID }}-macos-arm64
           cp -r README.md docs .bin/tailsocks-${{ env.BUILD_ID }}-macos-arm64
           (cd .bin && tar -czvf ../.out/tailsocks-${{ env.BUILD_ID }}-macos-arm64.tar.gz tailsocks-${{ env.BUILD_ID }}-macos-arm64)
