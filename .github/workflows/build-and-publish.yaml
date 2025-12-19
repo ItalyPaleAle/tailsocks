@@ -1,0 +1,266 @@
+name: Build and publish
+
+on:
+  push:
+    branches:
+      - "main"
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+  attestations: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Lowercase REPO_OWNER which is required for containers
+      - name: Set lowercase REPO_OWNER
+        run: |
+          REPO_OWNER=${{ github.repository_owner }}
+          echo "REPO_OWNER=${REPO_OWNER,,}" >>${GITHUB_ENV}
+
+      - name: Generate container tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ env.REPO_OWNER }}/tailsocks
+          # generate semver tags and 'latest' tag
+          tags: |
+            type=edge,branch=main
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+
+      - name: Set variables
+        run: |
+          BUILD_ID=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
+          BUILD_VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
+          BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+          COMMIT_HASH=$(echo "${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}" | head -c 7)
+
+          echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
+          echo "BUILD_VERSION=$BUILD_VERSION" >> $GITHUB_ENV
+          echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV
+          echo "COMMIT_HASH=$COMMIT_HASH" >> $GITHUB_ENV
+
+          echo "BUILD_ID: '$BUILD_ID'"
+          echo "BUILD_VERSION: '$BUILD_VERSION'"
+          echo "BUILD_DATE: '$BUILD_DATE'"
+          echo "COMMIT_HASH: '$COMMIT_HASH'"
+
+          BUILDINFO_PKG="github.com/italypaleale/tailsocks/buildinfo"
+          BUILD_LDFLAGS="-X ${BUILDINFO_PKG}.Production=1 -X ${BUILDINFO_PKG}.AppVersion=${BUILD_VERSION} -X ${BUILDINFO_PKG}.BuildId=${BUILD_ID} -X ${BUILDINFO_PKG}.BuildDate=${BUILD_DATE} -X ${BUILDINFO_PKG}.CommitHash=${COMMIT_HASH} -buildid=${BUILD_ID}"
+
+          echo "BUILD_LDFLAGS=$BUILD_LDFLAGS" >> $GITHUB_ENV
+
+          echo "BUILD_LDFLAGS: '$BUILD_LDFLAGS'"
+
+      - name: Login to container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build for all platforms
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p .bin .out
+
+          echo -e "\n###\nBuilding linux/amd64\n"
+          mkdir .bin/tailsocks-${{ env.BUILD_ID }}-linux-amd64
+          GOOS=linux GOARCH=amd64 \
+            go build \
+              -ldflags "${{ env.BUILD_LDFLAGS }}" \
+              -o .bin/tailsocks-${{ env.BUILD_ID }}-linux-amd64/tailsocks \
+              -trimpath \
+              ./cmd
+          cp LICENSE.md .bin/tailsocks-${{ env.BUILD_ID }}-linux-amd64
+          cp -r README.md .bin/tailsocks-${{ env.BUILD_ID }}-linux-amd64
+          (cd .bin && tar -czvf ../.out/tailsocks-${{ env.BUILD_ID }}-linux-amd64.tar.gz tailsocks-${{ env.BUILD_ID }}-linux-amd64)
+
+          echo -e "\n###\nBuilding linux/arm64\n"
+          mkdir .bin/tailsocks-${{ env.BUILD_ID }}-linux-arm64
+          GOOS=linux GOARCH=arm64 \
+            go build \
+              -ldflags "${{ env.BUILD_LDFLAGS }}" \
+              -o .bin/tailsocks-${{ env.BUILD_ID }}-linux-arm64/tailsocks \
+              -trimpath \
+              ./cmd
+          cp LICENSE.md .bin/tailsocks-${{ env.BUILD_ID }}-linux-arm64
+          cp -r README.md .bin/tailsocks-${{ env.BUILD_ID }}-linux-arm64
+          (cd .bin && tar -czvf ../.out/tailsocks-${{ env.BUILD_ID }}-linux-arm64.tar.gz tailsocks-${{ env.BUILD_ID }}-linux-arm64)
+
+          echo -e "\n###\nBuilding linux/armv7\n"
+          mkdir .bin/tailsocks-${{ env.BUILD_ID }}-linux-armv7
+          GOOS=linux GOARCH=arm GOARM=7 \
+            go build \
+              -ldflags "${{ env.BUILD_LDFLAGS }}" \
+              -o .bin/tailsocks-${{ env.BUILD_ID }}-linux-armv7/tailsocks \
+              -trimpath \
+              ./cmd
+          cp LICENSE.md .bin/tailsocks-${{ env.BUILD_ID }}-linux-armv7
+          cp -r README.md .bin/tailsocks-${{ env.BUILD_ID }}-linux-armv7
+          (cd .bin && tar -czvf ../.out/tailsocks-${{ env.BUILD_ID }}-linux-armv7.tar.gz tailsocks-${{ env.BUILD_ID }}-linux-armv7)
+
+          echo -e "\n###\nBuilding windows/amd64\n"
+          mkdir .bin/tailsocks-${{ env.BUILD_ID }}-windows-x64
+          GOOS=windows GOARCH=amd64 \
+            go build \
+              -ldflags "${{ env.BUILD_LDFLAGS }}" \
+              -o .bin/tailsocks-${{ env.BUILD_ID }}-windows-x64/tailsocks.exe \
+              -trimpath \
+              ./cmd
+          cp LICENSE.md .bin/tailsocks-${{ env.BUILD_ID }}-windows-x64
+          cp -r README.md .bin/tailsocks-${{ env.BUILD_ID }}-windows-x64
+          (cd .bin/tailsocks-${{ env.BUILD_ID }}-windows-x64 && zip -r ../../.out/tailsocks-${{ env.BUILD_ID }}-windows-x64.zip .)
+
+          echo -e "\n###\nBuilding windows/arm64\n"
+          mkdir .bin/tailsocks-${{ env.BUILD_ID }}-windows-arm64
+          GOOS=windows GOARCH=arm64 \
+            go build \
+              -ldflags "${{ env.BUILD_LDFLAGS }}" \
+              -o .bin/tailsocks-${{ env.BUILD_ID }}-windows-arm64/tailsocks.exe \
+              -trimpath \
+              ./cmd
+          cp LICENSE.md .bin/tailsocks-${{ env.BUILD_ID }}-windows-arm64
+          cp -r README.md .bin/tailsocks-${{ env.BUILD_ID }}-windows-arm64
+          (cd .bin/tailsocks-${{ env.BUILD_ID }}-windows-arm64 && zip -r ../../.out/tailsocks-${{ env.BUILD_ID }}-windows-arm64.zip .)
+
+          echo -e "\n###\nBuilding freebsd/amd64\n"
+          mkdir .bin/tailsocks-${{ env.BUILD_ID }}-freebsd-amd64
+          GOOS=freebsd GOARCH=amd64 \
+            go build \
+              -ldflags "${{ env.BUILD_LDFLAGS }}" \
+              -o .bin/tailsocks-${{ env.BUILD_ID }}-freebsd-amd64/tailsocks \
+              -trimpath \
+              ./cmd
+          cp LICENSE.md .bin/tailsocks-${{ env.BUILD_ID }}-freebsd-amd64
+          cp -r README.md .bin/tailsocks-${{ env.BUILD_ID }}-freebsd-amd64
+          (cd .bin && tar -czvf ../.out/tailsocks-${{ env.BUILD_ID }}-freebsd-amd64.tar.gz tailsocks-${{ env.BUILD_ID }}-freebsd-amd64)
+
+          echo -e "\n###\nBuilding freebsd/arm64\n"
+          mkdir .bin/tailsocks-${{ env.BUILD_ID }}-freebsd-arm64
+          GOOS=freebsd GOARCH=arm64 \
+            go build \
+              -ldflags "${{ env.BUILD_LDFLAGS }}" \
+              -o .bin/tailsocks-${{ env.BUILD_ID }}-freebsd-arm64/tailsocks \
+              -trimpath \
+              ./cmd
+          cp LICENSE.md .bin/tailsocks-${{ env.BUILD_ID }}-freebsd-arm64
+          cp -r README.md .bin/tailsocks-${{ env.BUILD_ID }}-freebsd-arm64
+          (cd .bin && tar -czvf ../.out/tailsocks-${{ env.BUILD_ID }}-freebsd-arm64.tar.gz tailsocks-${{ env.BUILD_ID }}-freebsd-arm64)
+
+          echo -e "\n###\nLinks for Docker buildx\n"
+          (
+            cd .bin && \
+            ln -v -s tailsocks-${{ env.BUILD_ID }}-linux-amd64 linux-amd64 && \
+            ln -v -s tailsocks-${{ env.BUILD_ID }}-linux-arm64 linux-arm64 && \
+            ln -v -s tailsocks-${{ env.BUILD_ID }}-linux-armv7 linux-arm \
+          )
+
+          echo -e "\n###\nCompilation done\n"
+          echo ".bin:"
+          ls -al .bin
+          echo ".out:"
+          ls -al .out
+
+      - name: Publish binaries as Actions Artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: artifacts
+          path: .out
+          include-hidden-files: true
+          compression-level: 0
+
+      - name: Build and push Container images
+        uses: docker/build-push-action@v6
+        id: docker-build-push
+        with:
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64/v8,linux/arm/v7
+          context: .
+          file: Dockerfile
+          push: true
+
+      - name: Binary attestation linux-amd64
+        uses: actions/attest-build-provenance@v1
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          subject-name: linux-amd64/tailsocks
+          subject-path: |
+            .bin/tailsocks-*-linux-amd64/tailsocks
+
+      - name: Binary attestation linux-arm64
+        uses: actions/attest-build-provenance@v1
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          subject-name: linux-arm64/tailsocks
+          subject-path: |
+            .bin/tailsocks-*-linux-arm64/tailsocks
+
+      - name: Binary attestation linux-armv7
+        uses: actions/attest-build-provenance@v1
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          subject-name: linux-armv7/tailsocks
+          subject-path: |
+            .bin/tailsocks-*-linux-armv7/tailsocks
+
+      - name: Binary attestation windows-x64
+        uses: actions/attest-build-provenance@v1
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          subject-name: windows-x64/tailsocks
+          subject-path: |
+            .bin/tailsocks-*-windows-x64/tailsocks.exe
+
+      - name: Binary attestation windows-arm64
+        uses: actions/attest-build-provenance@v1
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          subject-name: windows-arm64/tailsocks
+          subject-path: |
+            .bin/tailsocks-*-windows-arm64/tailsocks.exe
+
+      - name: Binary attestation freebsd-amd64
+        uses: actions/attest-build-provenance@v1
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          subject-name: freebsd-amd64/tailsocks
+          subject-path: |
+            .bin/tailsocks-*-freebsd-amd64/tailsocks
+
+      - name: Binary attestation freebsd-arm64
+        uses: actions/attest-build-provenance@v1
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          subject-name: freebsd-arm64/tailsocks
+          subject-path: |
+            .bin/tailsocks-*-freebsd-arm64/tailsocks
+
+      - name: Container image attestation
+        uses: actions/attest-build-provenance@v1
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          subject-name: 'ghcr.io/${{ env.REPO_OWNER }}/tailsocks'
+          subject-digest: ${{ steps.docker-build-push.outputs.digest }}
+          push-to-registry: true
