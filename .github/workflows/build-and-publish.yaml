@@ -129,7 +129,7 @@ jobs:
               -trimpath \
               ./
           cp LICENSE.md .bin/tailsocks-${{ env.BUILD_ID }}-macos-x64
-          cp -r README.md docs .bin/tailsocks-${{ env.BUILD_ID }}-macos-x64
+          cp -r README.md .bin/tailsocks-${{ env.BUILD_ID }}-macos-x64
           (cd .bin && tar -czvf ../.out/tailsocks-${{ env.BUILD_ID }}-macos-x64.tar.gz tailsocks-${{ env.BUILD_ID }}-macos-x64)
 
           echo -e "\n###\nBuilding darwin/arm64\n"
@@ -141,7 +141,7 @@ jobs:
               -trimpath \
               ./
           cp LICENSE.md .bin/tailsocks-${{ env.BUILD_ID }}-macos-arm64
-          cp -r README.md docs .bin/tailsocks-${{ env.BUILD_ID }}-macos-arm64
+          cp -r README.md .bin/tailsocks-${{ env.BUILD_ID }}-macos-arm64
           (cd .bin && tar -czvf ../.out/tailsocks-${{ env.BUILD_ID }}-macos-arm64.tar.gz tailsocks-${{ env.BUILD_ID }}-macos-arm64)
 
           echo -e "\n###\nBuilding windows/amd64\n"
