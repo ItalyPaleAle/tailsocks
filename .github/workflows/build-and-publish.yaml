@@ -120,6 +120,30 @@ jobs:
           cp -r README.md .bin/tailsocks-${{ env.BUILD_ID }}-linux-armv7
           (cd .bin && tar -czvf ../.out/tailsocks-${{ env.BUILD_ID }}-linux-armv7.tar.gz tailsocks-${{ env.BUILD_ID }}-linux-armv7)
 
+          echo -e "\n###\nBuilding darwin/amd64\n"
+          mkdir .bin/tailsocks-${{ env.BUILD_ID }}-macos-x64
+          GOOS=darwin GOARCH=amd64 \
+            go build \
+              -ldflags "${BUILD_LDFLAGS}" \
+              -o .bin/tailsocks-${{ env.BUILD_ID }}-macos-x64/tailsocks \
+              -trimpath \
+              ./cmd/tailsocks
+          cp LICENSE.md .bin/tailsocks-${{ env.BUILD_ID }}-macos-x64
+          cp -r README.md docs .bin/tailsocks-${{ env.BUILD_ID }}-macos-x64
+          (cd .bin && tar -czvf ../.out/tailsocks-${{ env.BUILD_ID }}-macos-x64.tar.gz tailsocks-${{ env.BUILD_ID }}-macos-x64)
+
+          echo -e "\n###\nBuilding darwin/arm64\n"
+          mkdir .bin/tailsocks-${{ env.BUILD_ID }}-macos-arm64
+          GOOS=darwin GOARCH=arm64 \
+            go build \
+              -ldflags "${BUILD_LDFLAGS}" \
+              -o .bin/tailsocks-${{ env.BUILD_ID }}-macos-arm64/tailsocks \
+              -trimpath \
+              ./cmd/tailsocks
+          cp LICENSE.md .bin/tailsocks-${{ env.BUILD_ID }}-macos-arm64
+          cp -r README.md docs .bin/tailsocks-${{ env.BUILD_ID }}-macos-arm64
+          (cd .bin && tar -czvf ../.out/tailsocks-${{ env.BUILD_ID }}-macos-arm64.tar.gz tailsocks-${{ env.BUILD_ID }}-macos-arm64)
+
           echo -e "\n###\nBuilding windows/amd64\n"
           mkdir .bin/tailsocks-${{ env.BUILD_ID }}-windows-x64
           GOOS=windows GOARCH=amd64 \
@@ -202,7 +226,7 @@ jobs:
           push: true
 
       - name: Binary attestation linux-amd64
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v2
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           subject-name: linux-amd64/tailsocks
@@ -210,7 +234,7 @@ jobs:
             .bin/tailsocks-*-linux-amd64/tailsocks
 
       - name: Binary attestation linux-arm64
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v2
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           subject-name: linux-arm64/tailsocks
@@ -218,15 +242,31 @@ jobs:
             .bin/tailsocks-*-linux-arm64/tailsocks
 
       - name: Binary attestation linux-armv7
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v2
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           subject-name: linux-armv7/tailsocks
           subject-path: |
             .bin/tailsocks-*-linux-armv7/tailsocks
 
+      - name: Binary attestation macos-x64
+        uses: actions/attest-build-provenance@v2
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          subject-name: macos-x64/tailsocks
+          subject-path: |
+            .bin/tailsocks-*-macos-x64/tailsocks
+
+      - name: Binary attestation macos-arm64
+        uses: actions/attest-build-provenance@v2
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          subject-name: macos-arm64/tailsocks
+          subject-path: |
+            .bin/tailsocks-*-macos-arm64/tailsocks
+
       - name: Binary attestation windows-x64
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v2
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           subject-name: windows-x64/tailsocks
@@ -234,7 +274,7 @@ jobs:
             .bin/tailsocks-*-windows-x64/tailsocks.exe
 
       - name: Binary attestation windows-arm64
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v2
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           subject-name: windows-arm64/tailsocks
@@ -242,7 +282,7 @@ jobs:
             .bin/tailsocks-*-windows-arm64/tailsocks.exe
 
       - name: Binary attestation freebsd-amd64
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v2
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           subject-name: freebsd-amd64/tailsocks
@@ -250,7 +290,7 @@ jobs:
             .bin/tailsocks-*-freebsd-amd64/tailsocks
 
       - name: Binary attestation freebsd-arm64
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v2
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           subject-name: freebsd-arm64/tailsocks
@@ -258,7 +298,7 @@ jobs:
             .bin/tailsocks-*-freebsd-arm64/tailsocks
 
       - name: Container image attestation
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v2
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           subject-name: 'ghcr.io/${{ env.REPO_OWNER }}/tailsocks'
