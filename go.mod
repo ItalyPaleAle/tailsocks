@@ -7,6 +7,7 @@ require (
 	github.com/italypaleale/go-kit v0.0.0-20251214064356-57c1a0f9caa3
 	github.com/lmittmann/tint v1.1.2
 	github.com/mattn/go-isatty v0.0.20
+	github.com/spf13/pflag v1.0.10
 	tailscale.com v1.92.4
 )
 

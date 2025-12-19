@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log/slog"
 	"net"
@@ -15,6 +14,7 @@ import (
 	kitslog "github.com/italypaleale/go-kit/slog"
 	"github.com/lmittmann/tint"
 	isatty "github.com/mattn/go-isatty"
+	"github.com/spf13/pflag"
 	"tailscale.com/client/local"
 	"tailscale.com/ipn"
 	"tailscale.com/tsnet"
@@ -22,28 +22,26 @@ import (
 
 func main() {
 	var (
-		socksAddr   = flag.String("socks-addr", "127.0.0.1:5040", "SOCKS5 listen address")
-		stateDir    = flag.String("state-dir", "./tsnet-state", "Directory to store tsnet state")
-		hostname    = flag.String("hostname", "tailsocks", "Tailscale node name (hostname)")
-		authKey     = flag.String("authkey", "", "Optional Tailscale auth key (or set TS_AUTHKEY env var; if omitted, loads from disk or prompts)")
-		exitNode    = flag.String("exit-node", "", "Exit node selector: IP or MagicDNS base name (e.g. 'home-exit'). Required.")
-		allowLAN    = flag.Bool("exit-node-allow-lan-access", false, "Allow access to local LAN while using exit node")
-		loginServer = flag.String("login-server", "", "Optional control server URL (e.g. https://controlplane.tld for Headscale)")
+		socksAddr   = pflag.StringP("socks-addr", "a", "127.0.0.1:5040", "SOCKS5 listen address")
+		stateDir    = pflag.StringP("state-dir", "s", "./tsnet-state", "Directory to store tsnet state")
+		hostname    = pflag.StringP("hostname", "n", "tailsocks", "Tailscale node name (hostname)")
+		authKey     = pflag.StringP("authkey", "k", "", "Optional Tailscale auth key (or set TS_AUTHKEY env var; if omitted, loads from disk or prompts)")
+		exitNode    = pflag.StringP("exit-node", "x", "", "Exit node selector: IP or MagicDNS base name (e.g. 'home-exit'). Required.")
+		allowLAN    = pflag.BoolP("exit-node-allow-lan-access", "l", false, "Allow access to local LAN while using exit node")
+		loginServer = pflag.StringP("login-server", "c", "", "Optional control server URL (e.g. https://controlplane.tld for Headscale)")
+		showHelp    = pflag.BoolP("help", "h", false, "Show this help message")
 	)
-	flag.Parse()
+	pflag.Parse()
 
-	// Setup logger with tint handler if connected to a tty
-	var handler slog.Handler
-	if isatty.IsTerminal(os.Stderr.Fd()) || isatty.IsCygwinTerminal(os.Stderr.Fd()) {
-		handler = tint.NewHandler(os.Stderr, nil)
-	} else {
-		handler = slog.NewJSONHandler(os.Stderr, nil)
+	if *showHelp {
+		pflag.Usage()
+		os.Exit(0)
 	}
-	logger := slog.New(handler)
-	slog.SetDefault(logger)
+
+	setLogger()
 
 	if *exitNode == "" {
-		kitslog.FatalError(logger, "missing --exit-node (IP like 100.x or MagicDNS base name)", fmt.Errorf("exit-node flag is required"))
+		kitslog.FatalError(slog.Default(), "missing --exit-node (IP like 100.x or MagicDNS base name)", fmt.Errorf("exit-node flag is required"))
 	}
 
 	key := strings.TrimSpace(*authKey)
@@ -66,46 +64,42 @@ func main() {
 	// Start tsnet by calling Up
 	_, err := s.Up(ctx)
 	if err != nil {
-		kitslog.FatalError(logger, "failed to start tsnet", err)
+		kitslog.FatalError(slog.Default(), "failed to start tsnet", err)
 	}
 
 	lc, err := s.LocalClient()
 	if err != nil {
-		kitslog.FatalError(logger, "LocalClient failed", err)
+		kitslog.FatalError(slog.Default(), "LocalClient failed", err)
 	}
 
 	// Ensure we're logged in and have status
 	st, err := lc.Status(ctx)
 	if err != nil {
-		kitslog.FatalError(logger, "tailscale not running/authorized", err)
+		kitslog.FatalError(slog.Default(), "tailscale not running/authorized", err)
 	}
 	slog.Info("Tailscale is up", "dnsName", st.Self.DNSName, "tailscaleIps", st.Self.TailscaleIPs)
 
 	// Configure exit node prefs.
 	err = setExitNodePrefs(ctx, lc, *exitNode, *allowLAN)
 	if err != nil {
-		kitslog.FatalError(logger, "set exit node prefs failed", err)
+		kitslog.FatalError(slog.Default(), "set exit node prefs failed", err)
 	}
 	slog.Info("Configured exit node", "exitNode", *exitNode, "allowLanAccess", *allowLAN)
 
-	// SOCKS5 server that dials via tsnet's embedded netstack.
-	dialViaTS := func(dialCtx context.Context, network, addr string) (net.Conn, error) {
-		// go-socks5 provides addr as host:port (host may be a DNS name).
-		return s.Dial(dialCtx, network, addr)
-	}
-
-	conf := &socks5.Config{
-		Dial: dialViaTS,
-		// You can add auth rules here if you want. Leaving it open on localhost.
-	}
-	socksServer, err := socks5.New(conf)
+	socksServer, err := socks5.New(&socks5.Config{
+		// SOCKS5 server that dials via tsnet's embedded netstack.
+		Dial: func(dialCtx context.Context, network, addr string) (net.Conn, error) {
+			// go-socks5 provides addr as host:port (host may be a DNS name).
+			return s.Dial(dialCtx, network, addr)
+		},
+	})
 	if err != nil {
-		kitslog.FatalError(logger, "error creating socks5 server", err)
+		kitslog.FatalError(slog.Default(), "error creating socks5 server", err)
 	}
 
 	l, err := net.Listen("tcp", *socksAddr)
 	if err != nil {
-		kitslog.FatalError(logger, "listen SOCKS failed", err)
+		kitslog.FatalError(slog.Default(), "listen SOCKS failed", err)
 	}
 	slog.Info("SOCKS5 proxy listening", "addr", "socks5://"+*socksAddr)
 
@@ -118,16 +112,29 @@ func main() {
 	}()
 
 	<-ctx.Done()
+
 	slog.Info("Shutting down...")
 	_ = l.Close()
 	_ = s.Close()
+}
+
+func setLogger() {
+	// Setup logger with tint handler if connected to a tty
+	var handler slog.Handler
+	if isatty.IsTerminal(os.Stderr.Fd()) || isatty.IsCygwinTerminal(os.Stderr.Fd()) {
+		handler = tint.NewHandler(os.Stderr, nil)
+	} else {
+		handler = slog.NewJSONHandler(os.Stderr, nil)
+	}
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
 }
 
 func setExitNodePrefs(ctx context.Context, lc *local.Client, exitNodeSel string, allowLAN bool) error {
 	// Get current prefs and clone.
 	p, err := lc.GetPrefs(ctx)
 	if err != nil {
-		return fmt.Errorf("error getting preferences: %w", err)
+		return fmt.Errorf("GetPrefs: %w", err)
 	}
 	np := p.Clone()
 	np.WantRunning = true
