@@ -41,7 +41,7 @@ func main() {
 		pflag.Usage()
 		os.Exit(0)
 	case *showVersion:
-		fmt.Printf("%s %s - build: %s\n", buildinfo.AppName, buildinfo.AppVersion, buildinfo.BuildDescription)
+		fmt.Printf("%s %s - build: %s\n", buildinfo.AppName, buildinfo.AppVersion, buildinfo.BuildDescription) //nolint:forbidigo
 		os.Exit(0)
 	}
 
