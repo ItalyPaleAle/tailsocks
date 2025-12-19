@@ -9,7 +9,6 @@ import (
 	"net/netip"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/armon/go-socks5"
 	"github.com/italypaleale/go-kit/signals"
@@ -75,19 +74,19 @@ func main() {
 		kitslog.FatalError(logger, "LocalClient failed", err)
 	}
 
-	// Ensure we're logged in and have status (needed for SetExitNodeIP helper).
-	st, err := waitForRunningStatus(ctx, lc, time.Minute)
+	// Ensure we're logged in and have status
+	st, err := lc.Status(ctx)
 	if err != nil {
 		kitslog.FatalError(logger, "tailscale not running/authorized", err)
 	}
-	slog.Info("Tailscale is up", "dns_name", st.Self.DNSName, "tailscale_ips", st.Self.TailscaleIPs)
+	slog.Info("Tailscale is up", "dnsName", st.Self.DNSName, "tailscaleIps", st.Self.TailscaleIPs)
 
 	// Configure exit node prefs.
 	err = setExitNodePrefs(ctx, lc, *exitNode, *allowLAN)
 	if err != nil {
 		kitslog.FatalError(logger, "set exit node prefs failed", err)
 	}
-	slog.Info("Configured exit node", "exit_node", *exitNode, "allow_lan_access", *allowLAN)
+	slog.Info("Configured exit node", "exitNode", *exitNode, "allowLanAccess", *allowLAN)
 
 	// SOCKS5 server that dials via tsnet's embedded netstack.
 	dialViaTS := func(dialCtx context.Context, network, addr string) (net.Conn, error) {
@@ -122,48 +121,6 @@ func main() {
 	slog.Info("Shutting down...")
 	_ = l.Close()
 	_ = s.Close()
-}
-
-func waitForRunningStatus(ctx context.Context, lc *local.Client, timeout time.Duration) (*ipnstateStatusLite, error) {
-	deadline := time.NewTimer(timeout)
-	defer deadline.Stop()
-
-	tick := time.NewTicker(500 * time.Millisecond)
-	defer tick.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-deadline.C:
-			return nil, fmt.Errorf("timed out waiting for tailscale to be running; check auth key and tailnet policies")
-		case <-tick.C:
-			st, err := lc.Status(ctx)
-			if err != nil {
-				continue
-			}
-			// Status is a concrete type from tailscale.com/ipnstate, but we only need a few fields
-			if st.BackendState == "Running" && st.Self != nil {
-				return &ipnstateStatusLite{
-					Self: ipnstateSelfLite{
-						DNSName:      st.Self.DNSName,
-						TailscaleIPs: st.Self.TailscaleIPs,
-						StableNodeID: st.Self.ID,
-					},
-				}, nil
-			}
-		}
-	}
-}
-
-// Minimal "view" of ipnstate.Status we need, so this file stays small.
-type ipnstateStatusLite struct {
-	Self ipnstateSelfLite
-}
-type ipnstateSelfLite struct {
-	DNSName      string
-	TailscaleIPs []netip.Addr
-	StableNodeID any // only for logging/debug; not used
 }
 
 func setExitNodePrefs(ctx context.Context, lc *local.Client, exitNodeSel string, allowLAN bool) error {
