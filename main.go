@@ -4,16 +4,18 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/netip"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/armon/go-socks5"
+	"github.com/italypaleale/go-kit/signals"
+	kitslog "github.com/italypaleale/go-kit/slog"
+	"github.com/lmittmann/tint"
+	isatty "github.com/mattn/go-isatty"
 	"tailscale.com/client/local"
 	"tailscale.com/ipn"
 	"tailscale.com/tsnet"
@@ -31,8 +33,18 @@ func main() {
 	)
 	flag.Parse()
 
+	// Setup logger with tint handler if connected to a tty
+	var handler slog.Handler
+	if isatty.IsTerminal(os.Stderr.Fd()) || isatty.IsCygwinTerminal(os.Stderr.Fd()) {
+		handler = tint.NewHandler(os.Stderr, nil)
+	} else {
+		handler = slog.NewJSONHandler(os.Stderr, nil)
+	}
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+
 	if *exitNode == "" {
-		log.Fatalf("missing --exit-node (IP like 100.x or MagicDNS base name)")
+		kitslog.FatalError(logger, "missing --exit-node (IP like 100.x or MagicDNS base name)", fmt.Errorf("exit-node flag is required"))
 	}
 
 	key := strings.TrimSpace(*authKey)
@@ -40,15 +52,14 @@ func main() {
 		key = strings.TrimSpace(os.Getenv("TS_AUTHKEY"))
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := signals.SignalContext(context.Background())
 
 	s := &tsnet.Server{
 		AuthKey:  key,
 		Dir:      *stateDir,
 		Hostname: *hostname,
 		Logf: func(format string, args ...any) {
-			log.Printf("[tsnet] "+format, args...)
+			slog.Info(fmt.Sprintf(format, args...), "component", "tsnet")
 		},
 		ControlURL: *loginServer,
 	}
@@ -56,27 +67,27 @@ func main() {
 	// Start tsnet by calling Up
 	_, err := s.Up(ctx)
 	if err != nil {
-		log.Fatalf("failed to start tsnet: %v", err)
+		kitslog.FatalError(logger, "failed to start tsnet", err)
 	}
 
 	lc, err := s.LocalClient()
 	if err != nil {
-		log.Fatalf("LocalClient: %v", err)
+		kitslog.FatalError(logger, "LocalClient failed", err)
 	}
 
 	// Ensure we're logged in and have status (needed for SetExitNodeIP helper).
 	st, err := waitForRunningStatus(ctx, lc, time.Minute)
 	if err != nil {
-		log.Fatalf("tailscale not running/authorized: %v", err)
+		kitslog.FatalError(logger, "tailscale not running/authorized", err)
 	}
-	log.Printf("Tailscale is up as %q (%s)", st.Self.DNSName, st.Self.TailscaleIPs)
+	slog.Info("Tailscale is up", "dns_name", st.Self.DNSName, "tailscale_ips", st.Self.TailscaleIPs)
 
 	// Configure exit node prefs.
 	err = setExitNodePrefs(ctx, lc, *exitNode, *allowLAN)
 	if err != nil {
-		log.Fatalf("set exit node prefs: %v", err)
+		kitslog.FatalError(logger, "set exit node prefs failed", err)
 	}
-	log.Printf("Configured exit node %q (allow LAN access=%v)", *exitNode, *allowLAN)
+	slog.Info("Configured exit node", "exit_node", *exitNode, "allow_lan_access", *allowLAN)
 
 	// SOCKS5 server that dials via tsnet's embedded netstack.
 	dialViaTS := func(dialCtx context.Context, network, addr string) (net.Conn, error) {
@@ -90,34 +101,27 @@ func main() {
 	}
 	socksServer, err := socks5.New(conf)
 	if err != nil {
-		log.Fatalf("create socks5 server: %v", err)
+		kitslog.FatalError(logger, "error creating socks5 server", err)
 	}
 
 	l, err := net.Listen("tcp", *socksAddr)
 	if err != nil {
-		log.Fatalf("listen SOCKS on %s: %v", *socksAddr, err)
+		kitslog.FatalError(logger, "listen SOCKS failed", err)
 	}
-	log.Printf("SOCKS5 proxy listening on socks5://%s", *socksAddr)
+	slog.Info("SOCKS5 proxy listening", "addr", "socks5://"+*socksAddr)
 
 	// Shutdown handling.
 	go func() {
 		err = socksServer.Serve(l)
 		if err != nil {
-			log.Printf("SOCKS server stopped: %v", err)
-			cancel()
+			slog.Warn("SOCKS server stopped", "error", err)
 		}
 	}()
 
-	waitForSignals()
-	log.Printf("Shutting down...")
+	<-ctx.Done()
+	slog.Info("Shutting down...")
 	_ = l.Close()
 	_ = s.Close()
-}
-
-func waitForSignals() {
-	sigCh := make(chan os.Signal, 2)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	<-sigCh
 }
 
 func waitForRunningStatus(ctx context.Context, lc *local.Client, timeout time.Duration) (*ipnstateStatusLite, error) {
@@ -138,7 +142,7 @@ func waitForRunningStatus(ctx context.Context, lc *local.Client, timeout time.Du
 			if err != nil {
 				continue
 			}
-			// Status is a concrete type from tailscale.com/ipnstate, but we only need a few fields.
+			// Status is a concrete type from tailscale.com/ipnstate, but we only need a few fields
 			if st.BackendState == "Running" && st.Self != nil {
 				return &ipnstateStatusLite{
 					Self: ipnstateSelfLite{
