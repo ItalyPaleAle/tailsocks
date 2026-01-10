@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/spf13/pflag"
 )
@@ -15,6 +17,7 @@ type Options struct {
 	ExitNode    string
 	AllowLAN    bool
 	LoginServer string
+	Ephemeral   bool
 	ShowHelp    bool
 	ShowVersion bool
 }
@@ -30,13 +33,21 @@ func ParseFlags() (*Options, error) {
 	pflag.StringVarP(&cfg.ExitNode, "exit-node", "x", "", "Exit node selector: IP or MagicDNS base name (e.g. 'home-exit'). Required.")
 	pflag.BoolVarP(&cfg.AllowLAN, "exit-node-allow-lan-access", "l", false, "Allow access to local LAN while using exit node")
 	pflag.StringVarP(&cfg.LoginServer, "login-server", "c", "", "Optional control server URL (e.g. https://controlplane.tld for Headscale)")
-	pflag.BoolVarP(&cfg.ShowHelp, "help", "h", false, "Show this help message")
+	pflag.BoolVarP(&cfg.Ephemeral, "ephemeral", "e", false, "Make this node ephemeral (auto-cleanup on disconnect)")
 	pflag.BoolVarP(&cfg.ShowVersion, "version", "v", false, "Show version")
+	pflag.BoolVarP(&cfg.ShowHelp, "help", "h", false, "Show this help message")
 
-	err := pflag.CommandLine.Parse(pflag.Args())
+	err := pflag.CommandLine.Parse(os.Args[1:])
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse flags: %w", err)
 	}
 
 	return cfg, nil
+}
+
+// String implements fmt.Stringer and it's used for debugging
+func (o *Options) String() string {
+	// Show all options as JSON
+	j, _ := json.Marshal(o)
+	return string(j)
 }

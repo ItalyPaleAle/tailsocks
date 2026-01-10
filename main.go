@@ -51,9 +51,10 @@ func main() {
 	ctx := signals.SignalContext(context.Background())
 
 	s := &tsnet.Server{
-		AuthKey:  key,
-		Dir:      opts.StateDir,
-		Hostname: opts.Hostname,
+		AuthKey:   key,
+		Dir:       opts.StateDir,
+		Hostname:  opts.Hostname,
+		Ephemeral: opts.Ephemeral,
 		Logf: func(format string, args ...any) {
 			slog.Info(fmt.Sprintf(format, args...), slog.String("scope", "tsnet"))
 		},

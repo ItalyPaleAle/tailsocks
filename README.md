@@ -115,15 +115,17 @@ tailsocks --exit-node home-server --login-server https://headscale.example.com
 ## Command-Line Options
 
 ```text
-  -a, --socks-addr string                SOCKS5 listen address (default "127.0.0.1:5040")
-  -s, --state-dir string                 Directory to store tsnet state (default "./tsnet-state")
-  -n, --hostname string                  Tailscale node name (default "tailsocks")
-  -k, --authkey string                   Tailscale auth key (or set TS_AUTHKEY env var)
-  -x, --exit-node string                 Exit node: IP or MagicDNS name (required)
-  -l, --exit-node-allow-lan-access       Allow LAN access while using exit node
-  -c, --login-server string              Custom control server URL (e.g., Headscale)
-  -v, --version                          Show application version
-  -h, --help                             Show help message
+Usage of tailsocks:
+  -k, --authkey string               Optional Tailscale auth key (or set TS_AUTHKEY env var; if omitted, loads from disk or prompts)
+  -e, --ephemeral                    Make this node ephemeral (auto-cleanup on disconnect)
+  -x, --exit-node string             Exit node selector: IP or MagicDNS base name (e.g. 'home-exit'). Required.
+  -l, --exit-node-allow-lan-access   Allow access to local LAN while using exit node
+  -n, --hostname string              Tailscale node name (hostname) (default "tailsocks")
+  -c, --login-server string          Optional control server URL (e.g. https://controlplane.tld for Headscale)
+  -a, --socks-addr string            SOCKS5 listen address (default "127.0.0.1:5040")
+  -s, --state-dir string             Directory to store tsnet state (default "./tsnet-state")
+  -v, --version                      Show version
+  -h, --help                         Show this help message
 ```
 
 ## Configuring Applications
