@@ -23,35 +23,27 @@ import (
 )
 
 func main() {
-	var (
-		socksAddr   = pflag.StringP("socks-addr", "a", "127.0.0.1:5040", "SOCKS5 listen address")
-		stateDir    = pflag.StringP("state-dir", "s", "./tsnet-state", "Directory to store tsnet state")
-		hostname    = pflag.StringP("hostname", "n", "tailsocks", "Tailscale node name (hostname)")
-		authKey     = pflag.StringP("authkey", "k", "", "Optional Tailscale auth key (or set TS_AUTHKEY env var; if omitted, loads from disk or prompts)")
-		exitNode    = pflag.StringP("exit-node", "x", "", "Exit node selector: IP or MagicDNS base name (e.g. 'home-exit'). Required.")
-		allowLAN    = pflag.BoolP("exit-node-allow-lan-access", "l", false, "Allow access to local LAN while using exit node")
-		loginServer = pflag.StringP("login-server", "c", "", "Optional control server URL (e.g. https://controlplane.tld for Headscale)")
-		showHelp    = pflag.BoolP("help", "h", false, "Show this help message")
-		showVersion = pflag.BoolP("version", "v", false, "Show version")
-	)
-	pflag.Parse()
+	opts, err := ParseFlags()
+	if err != nil {
+		kitslog.FatalError(slog.Default(), "failed to parse flags", err)
+	}
 
 	switch {
-	case *showHelp:
+	case opts.ShowHelp:
 		pflag.Usage()
 		os.Exit(0)
-	case *showVersion:
+	case opts.ShowVersion:
 		fmt.Printf("%s %s - build: %s\n", buildinfo.AppName, buildinfo.AppVersion, buildinfo.BuildDescription) //nolint:forbidigo
 		os.Exit(0)
 	}
 
 	setLogger()
 
-	if *exitNode == "" {
+	if opts.ExitNode == "" {
 		kitslog.FatalError(slog.Default(), "missing --exit-node (IP like 100.x or MagicDNS base name)", errors.New("exit-node flag is required"))
 	}
 
-	key := strings.TrimSpace(*authKey)
+	key := strings.TrimSpace(opts.AuthKey)
 	if key == "" {
 		key = strings.TrimSpace(os.Getenv("TS_AUTHKEY"))
 	}
@@ -60,16 +52,16 @@ func main() {
 
 	s := &tsnet.Server{
 		AuthKey:  key,
-		Dir:      *stateDir,
-		Hostname: *hostname,
+		Dir:      opts.StateDir,
+		Hostname: opts.Hostname,
 		Logf: func(format string, args ...any) {
 			slog.Info(fmt.Sprintf(format, args...), slog.String("scope", "tsnet"))
 		},
-		ControlURL: *loginServer,
+		ControlURL: opts.LoginServer,
 	}
 
 	// Start tsnet by calling Up
-	_, err := s.Up(ctx)
+	_, err = s.Up(ctx)
 	if err != nil {
 		kitslog.FatalError(slog.Default(), "failed to start tsnet", err)
 	}
@@ -87,11 +79,11 @@ func main() {
 	slog.Info("Tailscale is up", "dnsName", st.Self.DNSName, "tailscaleIps", st.Self.TailscaleIPs)
 
 	// Configure exit node prefs.
-	err = setExitNodePrefs(ctx, lc, *exitNode, *allowLAN)
+	err = setExitNodePrefs(ctx, lc, opts.ExitNode, opts.AllowLAN)
 	if err != nil {
 		kitslog.FatalError(slog.Default(), "set exit node prefs failed", err)
 	}
-	slog.Info("Configured exit node", "exitNode", *exitNode, "allowLanAccess", *allowLAN)
+	slog.Info("Configured exit node", "exitNode", opts.ExitNode, "allowLanAccess", opts.AllowLAN)
 
 	socksServer, err := socks5.New(&socks5.Config{
 		// SOCKS5 server that dials via tsnet's embedded netstack.
@@ -109,11 +101,11 @@ func main() {
 	}
 
 	nlc := net.ListenConfig{}
-	l, err := nlc.Listen(ctx, "tcp", *socksAddr)
+	l, err := nlc.Listen(ctx, "tcp", opts.SocksAddr)
 	if err != nil {
 		kitslog.FatalError(slog.Default(), "listen SOCKS failed", err)
 	}
-	slog.Info("SOCKS5 proxy listening", "addr", "socks5://"+*socksAddr)
+	slog.Info("SOCKS5 proxy listening", "addr", "socks5://"+opts.SocksAddr)
 
 	// Shutdown handling.
 	go func() {
