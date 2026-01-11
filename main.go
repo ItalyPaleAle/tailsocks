@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"strings"
 
 	"github.com/armon/go-socks5"
 	"github.com/italypaleale/go-kit/signals"
@@ -42,13 +43,28 @@ func main() {
 		kitslog.FatalError(slog.Default(), "missing --exit-node (IP like 100.x or MagicDNS base name)", errors.New("exit-node flag is required"))
 	}
 
-	ctx := signals.SignalContext(context.Background())
-
 	// Setup authentication
-	authKey, ephemeral, err := setupAuthentication(opts)
-	if err != nil {
-		kitslog.FatalError(slog.Default(), "authentication setup failed", err)
+	var authKey string
+	var ephemeral bool
+
+	// If --oauth2 flag is set, use OAuth2 credentials (ephemeral mode)
+	if opts.OAuth2 != "" {
+		authKey, err = loadOAuth2Credentials(opts.OAuth2)
+		if err != nil {
+			kitslog.FatalError(slog.Default(), "failed to load OAuth2 credentials", err)
+		}
+		ephemeral = true
+		slog.Info("Using OAuth2 credentials", "path", opts.OAuth2)
+	} else {
+		// Otherwise, use the standard auth key flow
+		authKey = strings.TrimSpace(opts.AuthKey)
+		if authKey == "" {
+			authKey = strings.TrimSpace(os.Getenv("TS_AUTHKEY"))
+		}
+		ephemeral = opts.Ephemeral
 	}
+
+	ctx := signals.SignalContext(context.Background())
 
 	s := &tsnet.Server{
 		AuthKey:   authKey,
