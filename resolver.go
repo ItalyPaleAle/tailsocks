@@ -8,15 +8,20 @@ import (
 	"net/netip"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/italypaleale/go-kit/ttlcache"
 	"golang.org/x/net/dns/dnsmessage"
 	"tailscale.com/client/local"
 )
+
+const maxCacheTTL = 5 * time.Minute
 
 // TailscaleResolver resolves DNS names through Tailscale
 type TailscaleResolver struct {
 	lc             *local.Client
 	magicDNSSuffix string
+	cache          *ttlcache.Cache[net.IP]
 }
 
 // NewTailscaleResolver creates a new resolver that performs DNS lookups through Tailscale
@@ -24,15 +29,26 @@ func NewTailscaleResolver(lc *local.Client, magicDNSSuffix string) *TailscaleRes
 	return &TailscaleResolver{
 		lc:             lc,
 		magicDNSSuffix: magicDNSSuffix,
+		cache: ttlcache.NewCache[net.IP](&ttlcache.CacheOptions{
+			MaxTTL: maxCacheTTL,
+		}),
 	}
 }
 
 // Resolve implements socks5.NameResolver
-// It resolves the given hostname to an IP address using Tailscale
+// It resolves the given hostname to an IP address using Tailscale.
+// Results are cached for up to 5 minutes or the record's TTL, whichever is shorter.
 func (r *TailscaleResolver) Resolve(ctx context.Context, name string) (context.Context, net.IP, error) {
+	// Check cache first
+	cached, ok := r.cache.Get(name)
+	if ok {
+		return ctx, cached, nil
+	}
+
 	// Perform lookups for A and AAA records in parallel
 	type resMsg struct {
 		records []netip.Addr
+		ttl     time.Duration
 		err     error
 	}
 	var res struct {
@@ -42,16 +58,18 @@ func (r *TailscaleResolver) Resolve(ctx context.Context, name string) (context.C
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		records, err := r.resolveDNS(ctx, name, "A")
+		records, ttl, err := r.resolveDNS(ctx, name, "A")
 		res.A = resMsg{
 			records: records,
+			ttl:     ttl,
 			err:     err,
 		}
 	})
 	wg.Go(func() {
-		records, err := r.resolveDNS(ctx, name, "AAA")
+		records, ttl, err := r.resolveDNS(ctx, name, "AAA")
 		res.AAA = resMsg{
 			records: records,
+			ttl:     ttl,
 			err:     err,
 		}
 	})
@@ -59,10 +77,14 @@ func (r *TailscaleResolver) Resolve(ctx context.Context, name string) (context.C
 
 	// Check if we have an A record first, then AAAA
 	if res.A.err == nil && len(res.A.records) > 0 {
-		return ctx, res.A.records[0].AsSlice(), nil
+		ip := res.A.records[0].AsSlice()
+		r.cache.Set(name, ip, min(res.A.ttl, maxCacheTTL))
+		return ctx, ip, nil
 	}
 	if res.AAA.err == nil && len(res.AAA.records) > 0 {
-		return ctx, res.AAA.records[0].AsSlice(), nil
+		ip := res.AAA.records[0].AsSlice()
+		r.cache.Set(name, ip, min(res.AAA.ttl, maxCacheTTL))
+		return ctx, ip, nil
 	}
 
 	// If we're here, we didn't have a result
@@ -82,35 +104,36 @@ func (r *TailscaleResolver) Resolve(ctx context.Context, name string) (context.C
 // - If name is short (no dot), first try "name." (root-relative)
 // - If that returns NXDOMAIN, retry "name.<MagicDNSSuffix>.
 // - Uses tailscaled LocalAPI (QueryDNS), so it supports MagicDNS/split DNS
-func (r *TailscaleResolver) resolveDNS(ctx context.Context, name string, qt string) ([]netip.Addr, error) {
+func (r *TailscaleResolver) resolveDNS(ctx context.Context, name string, qt string) ([]netip.Addr, time.Duration, error) {
 	name = strings.TrimSpace(name)
 	isShort := !strings.Contains(name, ".") && !strings.HasSuffix(name, ".")
 	baseQname := r.ensureTrailingDot(name)
 
 	res, _, err := r.lc.QueryDNS(ctx, baseQname, qt)
 	if err != nil {
-		return nil, fmt.Errorf("QueryDNS(%q, %s): %w", baseQname, qt, err)
+		return nil, 0, fmt.Errorf("QueryDNS(%q, %s): %w", baseQname, qt, err)
 	}
 
 	// If NXDOMAIN and it's a short name, try expanded query
 	if isShort && r.isNXDOMAIN(res) && r.magicDNSSuffix != "" {
 		expanded := r.expandWithSuffix(name, r.magicDNSSuffix)
+
 		res2, _, err := r.lc.QueryDNS(ctx, expanded, qt)
 		if err != nil {
-			return nil, fmt.Errorf("QueryDNS(%q, %s): %w", expanded, qt, err)
+			return nil, 0, fmt.Errorf("QueryDNS(%q, %s): %w", expanded, qt, err)
 		}
-		addrs, err := r.parseAandAAAA(res2)
+		addrs, ttl, err := r.parseAandAAAA(res2)
 		if err != nil {
-			return nil, fmt.Errorf("parse %s response (expanded): %w", qt, err)
+			return nil, 0, fmt.Errorf("parse %s response (expanded): %w", qt, err)
 		}
-		return addrs, nil
+		return addrs, ttl, nil
 	}
 
-	addrs, err := r.parseAandAAAA(res)
+	addrs, ttl, err := r.parseAandAAAA(res)
 	if err != nil {
-		return nil, fmt.Errorf("parse %s response: %w", qt, err)
+		return nil, 0, fmt.Errorf("parse %s response: %w", qt, err)
 	}
-	return addrs, nil
+	return addrs, ttl, nil
 }
 
 func (r *TailscaleResolver) ensureTrailingDot(s string) string {
@@ -142,44 +165,53 @@ func (r *TailscaleResolver) isNXDOMAIN(resp []byte) bool {
 	return h.RCode == dnsmessage.RCodeNameError
 }
 
-func (r *TailscaleResolver) parseAandAAAA(resp []byte) ([]netip.Addr, error) {
+func (r *TailscaleResolver) parseAandAAAA(resp []byte) (addrs []netip.Addr, ttl time.Duration, err error) {
 	var p dnsmessage.Parser
-	_, err := p.Start(resp)
+	_, err = p.Start(resp)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
+
 	err = p.SkipAllQuestions()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	out := make([]netip.Addr, 0, 1)
+	var minTTL uint32
 	for {
 		ah, err := p.AnswerHeader()
 		if errors.Is(err, dnsmessage.ErrSectionDone) {
 			break
 		} else if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
+
+		// Track the minimum TTL from all records
+		if minTTL == 0 || ah.TTL < minTTL {
+			minTTL = ah.TTL
+		}
+
 		switch ah.Type {
 		case dnsmessage.TypeA:
-			r, err := p.AResource()
+			rec, err := p.AResource()
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
-			out = append(out, netip.AddrFrom4(r.A))
+			out = append(out, netip.AddrFrom4(rec.A))
 		case dnsmessage.TypeAAAA:
-			r, err := p.AAAAResource()
+			rec, err := p.AAAAResource()
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
-			out = append(out, netip.AddrFrom16(r.AAAA))
+			out = append(out, netip.AddrFrom16(rec.AAAA))
 		default:
 			err = p.SkipAnswer()
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 		}
 	}
-	return out, nil
+
+	return out, time.Duration(minTTL) * time.Second, nil
 }
