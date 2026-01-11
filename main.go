@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/netip"
 	"os"
-	"strings"
 
 	"github.com/armon/go-socks5"
 	"github.com/italypaleale/go-kit/signals"
@@ -43,18 +42,19 @@ func main() {
 		kitslog.FatalError(slog.Default(), "missing --exit-node (IP like 100.x or MagicDNS base name)", errors.New("exit-node flag is required"))
 	}
 
-	key := strings.TrimSpace(opts.AuthKey)
-	if key == "" {
-		key = strings.TrimSpace(os.Getenv("TS_AUTHKEY"))
-	}
-
 	ctx := signals.SignalContext(context.Background())
 
+	// Setup authentication
+	authKey, ephemeral, err := setupAuthentication(ctx, opts)
+	if err != nil {
+		kitslog.FatalError(slog.Default(), "authentication setup failed", err)
+	}
+
 	s := &tsnet.Server{
-		AuthKey:   key,
+		AuthKey:   authKey,
 		Dir:       opts.StateDir,
 		Hostname:  opts.Hostname,
-		Ephemeral: opts.Ephemeral,
+		Ephemeral: ephemeral,
 		Logf: func(format string, args ...any) {
 			slog.Info(fmt.Sprintf(format, args...), slog.String("scope", "tsnet"))
 		},
