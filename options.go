@@ -50,6 +50,7 @@ func ParseFlags() (*Options, error) {
 // String implements fmt.Stringer and it's used for debugging
 func (o *Options) String() string {
 	// Show all options as JSON
+	//nolint:errchkjson,musttag
 	j, _ := json.Marshal(o)
 	return string(j)
 }

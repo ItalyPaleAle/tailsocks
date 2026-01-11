@@ -169,12 +169,12 @@ func (r *TailscaleResolver) parseAandAAAA(resp []byte) (addrs []netip.Addr, ttl 
 	var p dnsmessage.Parser
 	_, err = p.Start(resp)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("error from DNS message parser Start: %w", err)
 	}
 
 	err = p.SkipAllQuestions()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("error from DNS message parser SkipAllQuestions: %w", err)
 	}
 
 	out := make([]netip.Addr, 0, 1)
@@ -184,7 +184,7 @@ func (r *TailscaleResolver) parseAandAAAA(resp []byte) (addrs []netip.Addr, ttl 
 		if errors.Is(err, dnsmessage.ErrSectionDone) {
 			break
 		} else if err != nil {
-			return nil, 0, err
+			return nil, 0, fmt.Errorf("error from DNS message parser AnswerHeader: %w", err)
 		}
 
 		// Track the minimum TTL from all records
@@ -192,23 +192,24 @@ func (r *TailscaleResolver) parseAandAAAA(resp []byte) (addrs []netip.Addr, ttl 
 			minTTL = ah.TTL
 		}
 
+		//nolint:exhaustive
 		switch ah.Type {
 		case dnsmessage.TypeA:
 			rec, err := p.AResource()
 			if err != nil {
-				return nil, 0, err
+				return nil, 0, fmt.Errorf("error from DNS message parser AResource: %w", err)
 			}
 			out = append(out, netip.AddrFrom4(rec.A))
 		case dnsmessage.TypeAAAA:
 			rec, err := p.AAAAResource()
 			if err != nil {
-				return nil, 0, err
+				return nil, 0, fmt.Errorf("error from DNS message parser AAAAResource: %w", err)
 			}
 			out = append(out, netip.AddrFrom16(rec.AAAA))
 		default:
 			err = p.SkipAnswer()
 			if err != nil {
-				return nil, 0, err
+				return nil, 0, fmt.Errorf("error from DNS message parser SkipAnswer: %w", err)
 			}
 		}
 	}
