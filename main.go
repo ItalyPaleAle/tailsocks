@@ -86,7 +86,8 @@ func main() {
 	}
 	slog.Info("Configured exit node", "exitNode", opts.ExitNode, "allowLanAccess", opts.AllowLAN)
 
-	socksServer, err := socks5.New(&socks5.Config{
+	// Configure the SOCKS5 server
+	socksConfig := &socks5.Config{
 		// SOCKS5 server that dials via tsnet's embedded netstack
 		Dial: func(dialCtx context.Context, network, addr string) (net.Conn, error) {
 			// go-socks5 provides addr as host:port (host may be a DNS name).
@@ -96,7 +97,17 @@ func main() {
 			slog.Default().With(slog.String("scope", "socks")).Handler(),
 			slog.LevelInfo,
 		),
-	})
+	}
+
+	// Use Tailscale DNS resolver by default, unless --local-dns is set
+	if !opts.LocalDNS && st.CurrentTailnet.MagicDNSEnabled {
+		socksConfig.Resolver = NewTailscaleResolver(lc, st.CurrentTailnet.MagicDNSSuffix)
+		slog.Info("Using Tailscale DNS resolver")
+	} else {
+		slog.Info("Using local DNS resolver")
+	}
+
+	socksServer, err := socks5.New(socksConfig)
 	if err != nil {
 		kitslog.FatalError(slog.Default(), "error creating socks5 server", err)
 	}
