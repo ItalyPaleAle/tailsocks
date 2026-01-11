@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,18 +29,21 @@ func getDefaultCredentialsPath() (string, error) {
 // loadOAuth2Credentials loads OAuth2 credentials from a file
 func loadOAuth2Credentials(path string) (*OAuth2Credentials, error) {
 	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil // File doesn't exist, not an error
-		}
+	if os.IsNotExist(err) {
+		return nil, nil
+	} else if err != nil {
 		return nil, fmt.Errorf("failed to read credentials file: %w", err)
 	}
 
 	var creds OAuth2Credentials
-	if err := json.Unmarshal(data, &creds); err != nil {
+	err = json.Unmarshal(data, &creds)
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse credentials file: %w", err)
 	}
 
+	if creds.ClientID == "" {
+		return nil, errors.New("client_id is required in credentials file")
+	}
 	if creds.ClientSecret == "" {
 		return nil, errors.New("client_secret is required in credentials file")
 	}
@@ -53,18 +55,19 @@ func loadOAuth2Credentials(path string) (*OAuth2Credentials, error) {
 func saveOAuth2Credentials(path string, creds *OAuth2Credentials) error {
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("failed to create credentials directory: %w", err)
+	err := os.MkdirAll(dir, 0700)
+	if err != nil {
+		return fmt.Errorf("failed to create credentials directory '%s': %w", dir, err)
 	}
 
 	data, err := json.MarshalIndent(creds, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal credentials: %w", err)
+		return fmt.Errorf("failed to encode credentials as JSON: %w", err)
 	}
 
-	// Write with restricted permissions
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("failed to write credentials file: %w", err)
+	err = os.WriteFile(path, data, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to write credentials file '%s': %w", path, err)
 	}
 
 	return nil
@@ -126,31 +129,47 @@ func promptForOAuth2Credentials() (*OAuth2Credentials, error) {
 	}
 
 	return &OAuth2Credentials{
-		ClientID:     "tailsocks", // Stored for completeness; Tailscale OAuth flow uses only the secret
+		ClientID:     "tailsocks",
 		ClientSecret: secret,
 	}, nil
 }
 
 // determineEphemeralFlag calculates the ephemeral flag value based on CLI flags and default
 func determineEphemeralFlag(opts *Options, defaultValue bool) bool {
-	if opts.EphemeralSet {
-		return opts.Ephemeral
+	if opts.Ephemeral != nil {
+		return *opts.Ephemeral
 	}
 	return defaultValue
 }
 
-// setupAuthentication handles the authentication setup process
-func setupAuthentication(ctx context.Context, opts *Options) (authKey string, ephemeral bool, err error) {
-	// Priority 1: Check for TS_AUTHKEY environment variable
-	authKey = strings.TrimSpace(opts.AuthKey)
-	if authKey == "" {
-		authKey = strings.TrimSpace(os.Getenv("TS_AUTHKEY"))
+func getAuthKeyFromEnv() string {
+	authKey := strings.TrimSpace(os.Getenv("TS_AUTHKEY"))
+	if authKey != "" {
+		slog.Info("Using auth key from environment TS_AUTHKEY")
+		return authKey
 	}
 
+	authKey = strings.TrimSpace(os.Getenv("TS_AUTH_KEY"))
 	if authKey != "" {
-		slog.Info("Using auth key from environment/flag")
-		// Use the ephemeral flag from CLI if set, otherwise default to false (non-ephemeral)
-		return authKey, determineEphemeralFlag(opts, false), nil
+		slog.Info("Using auth key from environment TS_AUTH_KEY")
+		return authKey
+	}
+
+	return ""
+}
+
+// setupAuthentication handles the authentication setup process
+func setupAuthentication(opts *Options) (authKey string, ephemeral bool, err error) {
+	// Priority 1: Check for TS_AUTHKEY environment variable
+	authKey = strings.TrimSpace(opts.AuthKey)
+	if authKey != "" {
+		slog.Info("Using auth key from CLI flag")
+	} else {
+		authKey = getAuthKeyFromEnv()
+		if authKey != "" {
+			// Use the ephemeral flag from CLI if set, otherwise default to false (non-ephemeral)
+			return authKey, determineEphemeralFlag(opts, false), nil
+		}
 	}
 
 	// Priority 2: Try loading OAuth2 credentials from file
@@ -169,6 +188,7 @@ func setupAuthentication(ctx context.Context, opts *Options) (authKey string, ep
 
 	if creds != nil {
 		slog.Info("Using OAuth2 credentials from file", "path", credPath)
+
 		// OAuth2 credentials: ephemeral by default (unless overridden by CLI flag)
 		// The client secret is used directly as the auth key
 		// Tailscale's oauthkey package will handle the OAuth2 flow automatically
@@ -189,10 +209,11 @@ func setupAuthentication(ctx context.Context, opts *Options) (authKey string, ep
 		}
 
 		// Save credentials
-		if err := saveOAuth2Credentials(credPath, creds); err != nil {
-			slog.Warn("Failed to save OAuth2 credentials", "error", err)
+		err = saveOAuth2Credentials(credPath, creds)
+		if err != nil {
+			slog.Warn("Failed to save OAuth2 credentials", "error", err, "path", credPath)
 			fmt.Printf("\nWarning: Could not save credentials to %s: %v\n", credPath, err)
-			fmt.Println("You will need to enter them again next time.")
+			fmt.Println("You will need to enter them again next time")
 		} else {
 			fmt.Printf("\nOAuth2 credentials saved to: %s\n", credPath)
 		}

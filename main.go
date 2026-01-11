@@ -45,7 +45,7 @@ func main() {
 	ctx := signals.SignalContext(context.Background())
 
 	// Setup authentication
-	authKey, ephemeral, err := setupAuthentication(ctx, opts)
+	authKey, ephemeral, err := setupAuthentication(opts)
 	if err != nil {
 		kitslog.FatalError(slog.Default(), "authentication setup failed", err)
 	}
