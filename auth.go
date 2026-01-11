@@ -131,6 +131,14 @@ func promptForOAuth2Credentials() (*OAuth2Credentials, error) {
 	}, nil
 }
 
+// determineEphemeralFlag calculates the ephemeral flag value based on CLI flags and default
+func determineEphemeralFlag(opts *Options, defaultValue bool) bool {
+	if opts.EphemeralSet {
+		return opts.Ephemeral
+	}
+	return defaultValue
+}
+
 // setupAuthentication handles the authentication setup process
 func setupAuthentication(ctx context.Context, opts *Options) (authKey string, ephemeral bool, err error) {
 	// Priority 1: Check for TS_AUTH_KEY environment variable
@@ -142,11 +150,7 @@ func setupAuthentication(ctx context.Context, opts *Options) (authKey string, ep
 	if authKey != "" {
 		slog.Info("Using auth key from environment/flag")
 		// Use the ephemeral flag from CLI if set, otherwise default to false (non-ephemeral)
-		ephemeral := false
-		if opts.EphemeralSet {
-			ephemeral = opts.Ephemeral
-		}
-		return authKey, ephemeral, nil
+		return authKey, determineEphemeralFlag(opts, false), nil
 	}
 
 	// Priority 2: Try loading OAuth2 credentials from file
@@ -168,11 +172,7 @@ func setupAuthentication(ctx context.Context, opts *Options) (authKey string, ep
 		// OAuth2 credentials: ephemeral by default (unless overridden by CLI flag)
 		// The client secret is used directly as the auth key
 		// Tailscale's oauthkey package will handle the OAuth2 flow automatically
-		ephemeral := true // Default for OAuth2
-		if opts.EphemeralSet {
-			ephemeral = opts.Ephemeral
-		}
-		return creds.ClientSecret, ephemeral, nil
+		return creds.ClientSecret, determineEphemeralFlag(opts, true), nil
 	}
 
 	// Priority 3: No credentials found, prompt the user
@@ -198,11 +198,7 @@ func setupAuthentication(ctx context.Context, opts *Options) (authKey string, ep
 		}
 
 		// OAuth2 credentials: ephemeral by default
-		eph := true
-		if opts.EphemeralSet {
-			eph = opts.Ephemeral
-		}
-		return creds.ClientSecret, eph, nil
+		return creds.ClientSecret, determineEphemeralFlag(opts, true), nil
 	}
 
 	// User chose interactive login - return empty auth key
@@ -213,9 +209,5 @@ func setupAuthentication(ctx context.Context, opts *Options) (authKey string, ep
 	fmt.Println("A URL will be displayed below for authentication.")
 	fmt.Println()
 
-	eph := false
-	if opts.EphemeralSet {
-		eph = opts.Ephemeral
-	}
-	return "", eph, nil
+	return "", determineEphemeralFlag(opts, false), nil
 }
