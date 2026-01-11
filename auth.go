@@ -126,7 +126,7 @@ func promptForOAuth2Credentials() (*OAuth2Credentials, error) {
 	}
 
 	return &OAuth2Credentials{
-		ClientID:     "tailsocks", // Not used by Tailscale, but keep for future
+		ClientID:     "tailsocks", // Stored for completeness; Tailscale OAuth flow uses only the secret
 		ClientSecret: secret,
 	}, nil
 }
@@ -141,7 +141,7 @@ func determineEphemeralFlag(opts *Options, defaultValue bool) bool {
 
 // setupAuthentication handles the authentication setup process
 func setupAuthentication(ctx context.Context, opts *Options) (authKey string, ephemeral bool, err error) {
-	// Priority 1: Check for TS_AUTH_KEY environment variable
+	// Priority 1: Check for TS_AUTHKEY environment variable
 	authKey = strings.TrimSpace(opts.AuthKey)
 	if authKey == "" {
 		authKey = strings.TrimSpace(os.Getenv("TS_AUTHKEY"))
