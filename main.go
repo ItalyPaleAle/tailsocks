@@ -79,7 +79,7 @@ func main() {
 	}
 	slog.Info("Tailscale is up", "dnsName", st.Self.DNSName, "tailscaleIps", st.Self.TailscaleIPs)
 
-	// Configure exit node prefs.
+	// Configure exit node prefs
 	err = setExitNodePrefs(ctx, lc, opts.ExitNode, opts.AllowLAN)
 	if err != nil {
 		kitslog.FatalError(slog.Default(), "set exit node prefs failed", err)
@@ -87,7 +87,7 @@ func main() {
 	slog.Info("Configured exit node", "exitNode", opts.ExitNode, "allowLanAccess", opts.AllowLAN)
 
 	socksServer, err := socks5.New(&socks5.Config{
-		// SOCKS5 server that dials via tsnet's embedded netstack.
+		// SOCKS5 server that dials via tsnet's embedded netstack
 		Dial: func(dialCtx context.Context, network, addr string) (net.Conn, error) {
 			// go-socks5 provides addr as host:port (host may be a DNS name).
 			return s.Dial(dialCtx, network, addr)
@@ -108,7 +108,7 @@ func main() {
 	}
 	slog.Info("SOCKS5 proxy listening", "addr", "socks5://"+opts.SocksAddr)
 
-	// Shutdown handling.
+	// Shutdown handling
 	go func() {
 		err = socksServer.Serve(l)
 		if err != nil {
@@ -145,7 +145,7 @@ func setExitNodePrefs(ctx context.Context, lc *local.Client, exitNodeSel string,
 	np.WantRunning = true
 	np.ExitNodeAllowLANAccess = allowLAN
 
-	// Clear any existing exit node first to avoid conflicts.
+	// Clear any existing exit node first to avoid conflicts
 	np.ClearExitNode()
 
 	// Prefer SetExitNodeIP, since it accepts either IP or MagicDNS base name.
@@ -183,11 +183,11 @@ func setExitNodePrefs(ctx context.Context, lc *local.Client, exitNodeSel string,
 		return fmt.Errorf("EditPrefs: %w", err)
 	}
 
-	// Some clients separate "set which exit node" from "enable using it".
+	// Some clients separate "set which exit node" from "enable using it"
 	// This endpoint exists in LocalAPI
 	err = lc.SetUseExitNode(ctx, true)
 	if err != nil {
-		// If it fails, prefs alone may still work depending on version, but surface it.
+		// If it fails, prefs alone may still work depending on version, but surface it
 		return fmt.Errorf("SetUseExitNode(true): %w", err)
 	}
 
