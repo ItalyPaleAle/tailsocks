@@ -20,6 +20,7 @@ type Options struct {
 	LoginServer     string
 	Ephemeral       bool
 	EphemeralSet    bool // Track if --ephemeral was explicitly set
+	LocalDNS        bool
 	ShowHelp        bool
 	ShowVersion     bool
 }
@@ -37,6 +38,7 @@ func ParseFlags() (*Options, error) {
 	pflag.BoolVarP(&cfg.AllowLAN, "exit-node-allow-lan-access", "l", false, "Allow access to local LAN while using exit node")
 	pflag.StringVarP(&cfg.LoginServer, "login-server", "c", "", "Optional control server URL (e.g. https://controlplane.tld for Headscale)")
 	pflag.BoolVarP(&cfg.Ephemeral, "ephemeral", "e", false, "Make this node ephemeral (auto-cleanup on disconnect)")
+	pflag.BoolVar(&cfg.LocalDNS, "local-dns", false, "Use local DNS resolver instead of resolving DNS through Tailscale")
 	pflag.BoolVarP(&cfg.ShowVersion, "version", "v", false, "Show version")
 	pflag.BoolVarP(&cfg.ShowHelp, "help", "h", false, "Show this help message")
 
@@ -54,6 +56,7 @@ func ParseFlags() (*Options, error) {
 // String implements fmt.Stringer and it's used for debugging
 func (o *Options) String() string {
 	// Show all options as JSON
+	//nolint:errchkjson,musttag
 	j, _ := json.Marshal(o)
 	return string(j)
 }

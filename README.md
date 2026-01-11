@@ -121,10 +121,11 @@ Usage of tailsocks:
   -x, --exit-node string             Exit node selector: IP or MagicDNS base name (e.g. 'home-exit'). Required.
   -l, --exit-node-allow-lan-access   Allow access to local LAN while using exit node
   -n, --hostname string              Tailscale node name (hostname) (default "tailsocks")
+      --local-dns                    Use local DNS resolver instead of resolving DNS through Tailscale
   -c, --login-server string          Optional control server URL (e.g. https://controlplane.tld for Headscale)
   -a, --socks-addr string            SOCKS5 listen address (default "127.0.0.1:5040")
   -s, --state-dir string             Directory to store tsnet state (default "./tsnet-state")
-  -v, --version                      Show version
+  -v, --version                      Show versio
   -h, --help                         Show this help message
 ```
 
