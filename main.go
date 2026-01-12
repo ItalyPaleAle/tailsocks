@@ -13,13 +13,14 @@ import (
 	"github.com/armon/go-socks5"
 	"github.com/italypaleale/go-kit/signals"
 	kitslog "github.com/italypaleale/go-kit/slog"
-	"github.com/italypaleale/tailsocks/buildinfo"
 	"github.com/lmittmann/tint"
 	isatty "github.com/mattn/go-isatty"
 	"github.com/spf13/pflag"
 	"tailscale.com/client/local"
 	"tailscale.com/ipn"
 	"tailscale.com/tsnet"
+
+	"github.com/italypaleale/tailsocks/buildinfo"
 )
 
 func main() {
@@ -43,28 +44,46 @@ func main() {
 		kitslog.FatalError(slog.Default(), "missing --exit-node (IP like 100.x or MagicDNS base name)", errors.New("exit-node flag is required"))
 	}
 
-	// Setup authentication
-	var authKey string
-	var ephemeral bool
+	ctx := signals.SignalContext(context.Background())
 
-	// If --oauth2 flag is set, use OAuth2 credentials (ephemeral mode)
-	if opts.OAuth2 != "" {
-		authKey, err = loadOAuth2Credentials(opts.OAuth2)
+	// Setup authentication
+	var (
+		authKey   string
+		ephemeral bool
+	)
+
+	// If --oauth2 flag is set, use OAuth2 credentials
+	if opts.OAuth2 {
+		credPath, err := getCredentialsPath()
+		if err != nil {
+			kitslog.FatalError(slog.Default(), "failed to determine OAuth2 credentials path", err)
+		}
+
+		creds, err := loadOAuth2Credentials(credPath)
 		if err != nil {
 			kitslog.FatalError(slog.Default(), "failed to load OAuth2 credentials", err)
 		}
-		ephemeral = true
-		slog.Info("Using OAuth2 credentials", "path", opts.OAuth2)
+
+		authKey, err = creds.GetAuthToken(ctx)
+		if err != nil {
+			kitslog.FatalError(slog.Default(), "failed to get Tailscale auth key using OAuth2", err)
+		}
+
+		// Default is ephemeral
+		ephemeral = determineEphemeralFlag(opts, true)
+
+		slog.Info("Using OAuth2 credentials", "path", opts.OAuth2, "ephemeral", ephemeral)
 	} else {
 		// Otherwise, use the standard auth key flow
+		// The auth key from CLI and env can be empty, in which case tsnet will either use the existing credentials (if the node is already registered) or prompt for interactive authentication
 		authKey = strings.TrimSpace(opts.AuthKey)
 		if authKey == "" {
-			authKey = strings.TrimSpace(os.Getenv("TS_AUTHKEY"))
+			authKey = getAuthKeyFromEnv()
 		}
-		ephemeral = opts.Ephemeral
-	}
 
-	ctx := signals.SignalContext(context.Background())
+		// Default is persistent
+		ephemeral = determineEphemeralFlag(opts, true)
+	}
 
 	s := &tsnet.Server{
 		AuthKey:   authKey,
