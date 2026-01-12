@@ -64,13 +64,13 @@ func main() {
 			kitslog.FatalError(slog.Default(), "failed to load OAuth2 credentials", err)
 		}
 
-		authKey, err = creds.GetAuthToken(ctx)
+		// Default is ephemeral
+		ephemeral = determineEphemeralFlag(opts, true)
+
+		authKey, err = creds.GetAuthToken(ctx, ephemeral)
 		if err != nil {
 			kitslog.FatalError(slog.Default(), "failed to get Tailscale auth key using OAuth2", err)
 		}
-
-		// Default is ephemeral
-		ephemeral = determineEphemeralFlag(opts, true)
 
 		slog.Info("Using OAuth2 credentials", "path", opts.OAuth2, "ephemeral", ephemeral)
 	} else {
@@ -196,7 +196,7 @@ func setExitNodePrefs(ctx context.Context, lc *local.Client, exitNodeSel string,
 
 	// Prefer SetExitNodeIP, since it accepts either IP or MagicDNS base name.
 	// It requires a full ipnstate.Status, but LocalAPI's SetExitNodeIP helper
-	// also accepts MagicDNS base names and resolves/validates internally
+	// also accepts MagicDNS base names and resolves/validates internally.
 	//
 	// We don't have the full ipnstate.Status type in this minimal example, so:
 	// - If it's an IP literal, set ExitNodeIP directly.
