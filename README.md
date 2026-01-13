@@ -8,14 +8,14 @@ TailSocks creates a local SOCKS5 proxy server that automatically routes all traf
 
 - **Route specific applications** through your Tailscale network without affecting your entire system
 - **Use different exit nodes** for different applications simultaneously
-- **Access your tailnet resources** from applications that support SOCKS5 proxies
+- **Access your Tailnet resources** from applications that support SOCKS5 proxies
 - **Bypass VPN limitations** in applications that don't support traditional VPNs
 
 ## Use Cases
 
 - **Selective routing**: Route only specific applications (browsers, CLI tools, etc) through your Tailscale network
 - **Testing**: Test how your services behave from different network locations
-- **Development**: Access development resources on your tailnet without configuring your entire system
+- **Development**: Access development resources on your Tailnet without configuring your entire system
 - **Privacy**: Route sensitive traffic through your home or office network
 - **Multiple exit nodes**: Run multiple instances with different exit nodes for different purposes
 
@@ -26,6 +26,10 @@ TailSocks creates a local SOCKS5 proxy server that automatically routes all traf
 You can download the latest version of TailSocks from the [**Releases page**](https://github.com/italypaleale/tailsocks/releases) page.
 
 Fetch the correct archive for your system and architecture, then extract the files and copy the `tailsocks` binary to `/usr/local/bin` or another folder.
+
+> **Mac users:** binaries are not signed by Apple and you may get a security warning when trying to run them on your Mac.
+>
+> To fix this, run this command: `xattr -rc path/to/tailsocks`
 
 ### Using Docker/Podman
 
@@ -102,7 +106,37 @@ export TS_AUTHKEY=tskey-auth-xxxxx
 tailsocks --exit-node home-server
 ```
 
-If there's no existing authenticatio state, you will see a URL to authenticate your node in the logs.
+If there's no existing authentication state, you will see a URL to authenticate your node in the logs.
+
+### Authentication with OAuth2 client credentials
+
+Alternatively to using auth keys, you can provide [OAuth2 client credentials](https://tailscale.com/kb/1215/oauth-clients) for the Tailscale control plane. These are long-lived credentials that can be used repeatedly to register multiple nodes, and each node does not require manual approval (however, if Tailnet Lock is enabled, you will need to sign each created node manually).
+
+1. Create a new OAuth2 client:
+   1. Open the [**Trust credentials**](https://login.tailscale.com/admin/settings/trust-credentials) page of the Tailscale admin console. Select the Credential button, then choose OAuth.
+   2. In the list of scopes, select only **Auth keys** with **write** access. This requires the name of an ACL tag that must be used for the nodes created with the OAuth2 client.
+   3. Copy both the client ID and secret.
+2. Create a local file with the credentials stored in `~/.config/tailsocks/oauth2.json` (`%USERPROFILE%/.config/tailsocks/oauth2.json` on Windows) with the client ID, client secret, and name of the tag:
+
+   ```json
+   {
+     "client_id": "...",
+     "client_secret": "tskey-client-...",
+     "tag": "tag-name"
+   }
+   ```
+
+Run TailSocks with the `--oauth2` (or `-o`) option to use OAuth2 credentials:
+
+```sh
+tailsocks --exit-node home-server --oauth2
+```
+
+**Note:** when using OAuth2 credentials, nodes are registered as ephemeral by default. To make them persistent, use `--ephemeral=false`:
+
+```sh
+tailsocks --exit-node home-server --oauth2 --ephemeral=false
+```
 
 ### Custom Tailscale Control Server
 
@@ -116,16 +150,17 @@ tailsocks --exit-node home-server --login-server https://headscale.example.com
 
 ```text
 Usage of tailsocks:
+  -x, --exit-node string             Exit node selector: IP or MagicDNS base name (e.g. 'home-exit'). Required.
   -k, --authkey string               Optional Tailscale auth key (or set TS_AUTHKEY env var; if omitted, loads from disk or prompts)
   -e, --ephemeral                    Make this node ephemeral (auto-cleanup on disconnect)
-  -x, --exit-node string             Exit node selector: IP or MagicDNS base name (e.g. 'home-exit'). Required.
   -l, --exit-node-allow-lan-access   Allow access to local LAN while using exit node
   -n, --hostname string              Tailscale node name (hostname) (default "tailsocks")
       --local-dns                    Use local DNS resolver instead of resolving DNS through Tailscale
   -c, --login-server string          Optional control server URL (e.g. https://controlplane.tld for Headscale)
+  -o, --oauth2                       Use OAuth2 credentials for authentication. When set, node is ephemeral by default.
   -a, --socks-addr string            SOCKS5 listen address (default "127.0.0.1:5040")
   -s, --state-dir string             Directory to store tsnet state (default "./tsnet-state")
-  -v, --version                      Show versio
+  -v, --version                      Show version
   -h, --help                         Show this help message
 ```
 
@@ -182,11 +217,11 @@ tailsocks --exit-node home-server
 ### Access internal development resources
 
 ```sh
-# Start TailSocks (no exit node needed to access tailnet)
+# Start TailSocks (no exit node needed to access Tailnet)
 tailsocks --exit-node office-node
 
 # Use curl with the proxy
-curl http://internal-service.tailnet --proxy socks5://127.0.0.1:5040
+curl http://internal-service.tailnet --proxy socks5h://127.0.0.1:5040
 ```
 
 ### Run multiple instances for different exit nodes
@@ -214,6 +249,13 @@ tailsocks --exit-node office --socks-addr 127.0.0.1:5041 --state-dir ./state-off
 - Confirm your application is properly configured to use the SOCKS5 proxy
 - Check that the SOCKS5 address and port match TailSocks' listen address
 - Verify the exit node is online and accessible
+- Check Tailscale ACL to ensure that your node can use the exit node (destination name is `autogroup:internet`)
+
+**Tailscale Magic DNS isn't working:**
+
+- Ensure that you have configured your application to use the DNS resolver over the SOCKS5 proxy. For example, curl requires the use of `socks5h://` as protocol
+- Ensure that Magic DNS is enabled in your Tailnet
+- Ensure that Tailsocks is not running with the `--local-dns` flag
 
 **Can't access LAN resources:**
 
