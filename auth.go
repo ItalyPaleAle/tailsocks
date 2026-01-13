@@ -17,6 +17,8 @@ import (
 const userAgent = "tailsocks/1"
 
 // OAuth2Credentials represents the OAuth2 client credentials
+//
+//nolint:tagliatelle
 type OAuth2Credentials struct {
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
@@ -62,9 +64,10 @@ func (c *OAuth2Credentials) getAccessToken(parentCtx context.Context) (string, e
 	if err != nil {
 		return "", fmt.Errorf("request failed: %w", err)
 	}
-	defer res.Body.Close()
+	defer res.Body.Close() //nolint:errcheck
 
 	if res.StatusCode != http.StatusOK {
+		//nolint:tagliatelle
 		var errRes struct {
 			Error            string `json:"error"`
 			ErrorDescription string `json:"error_description"`
@@ -76,6 +79,7 @@ func (c *OAuth2Credentials) getAccessToken(parentCtx context.Context) (string, e
 		return "", fmt.Errorf("unexpected status code: %d", res.StatusCode)
 	}
 
+	//nolint:tagliatelle
 	var tokenRes struct {
 		AccessToken string `json:"access_token"`
 		TokenType   string `json:"token_type"`
@@ -116,7 +120,7 @@ func (c *OAuth2Credentials) createAuthKey(parentCtx context.Context, accessToken
 	if err != nil {
 		return "", fmt.Errorf("request failed: %w", err)
 	}
-	defer res.Body.Close()
+	defer res.Body.Close() //nolint:errcheck
 
 	if res.StatusCode != http.StatusOK {
 		var errRes struct {
@@ -156,7 +160,7 @@ func getCredentialsPath() (string, error) {
 
 // loadOAuth2Credentials loads OAuth2 credentials from a file
 func loadOAuth2Credentials(path string) (*OAuth2Credentials, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec
 	if os.IsNotExist(err) {
 		return nil, fmt.Errorf("OAuth2 credentials file '%s' does not exist", path)
 	} else if err != nil {
@@ -193,6 +197,9 @@ func loadOAuth2Credentials(path string) (*OAuth2Credentials, error) {
 }
 
 // saveOAuth2Credentials saves OAuth2 credentials to a file
+// Currently unused, will be used in the future
+//
+//nolint:unused
 func saveOAuth2Credentials(path string, creds *OAuth2Credentials) error {
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(path)
