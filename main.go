@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"net/netip"
 	"os"
 	"strings"
 
@@ -182,11 +181,12 @@ func setLogger() {
 }
 
 func setExitNodePrefs(ctx context.Context, lc *local.Client, exitNodeSel string, allowLAN bool) error {
-	// Get current prefs and clone.
+	// Get current prefs and clone
 	p, err := lc.GetPrefs(ctx)
 	if err != nil {
 		return fmt.Errorf("GetPrefs: %w", err)
 	}
+
 	np := p.Clone()
 	np.WantRunning = true
 	np.ExitNodeAllowLANAccess = allowLAN
@@ -194,47 +194,28 @@ func setExitNodePrefs(ctx context.Context, lc *local.Client, exitNodeSel string,
 	// Clear any existing exit node first to avoid conflicts
 	np.ClearExitNode()
 
-	// Prefer SetExitNodeIP, since it accepts either IP or MagicDNS base name.
-	// It requires a full ipnstate.Status, but LocalAPI's SetExitNodeIP helper
-	// also accepts MagicDNS base names and resolves/validates internally.
-	//
-	// We don't have the full ipnstate.Status type in this minimal example, so:
-	// - If it's an IP literal, set ExitNodeIP directly.
-	// - Otherwise, try using it as MagicDNS base name via Prefs.SetExitNodeIP by
-	//   fetching full status from LocalAPI.
-	ip, err := netip.ParseAddr(exitNodeSel)
-	if err == nil {
-		np.ExitNodeIP = ip
-	} else {
-		fullStatus, err := lc.Status(ctx)
-		if err != nil {
-			return fmt.Errorf("Status (for MagicDNS exit node resolution): %w", err) //nolint:staticcheck
-		}
-		err = np.SetExitNodeIP(exitNodeSel, fullStatus)
-		if err != nil {
-			return fmt.Errorf("SetExitNodeIP(%q): %w", exitNodeSel, err)
-		}
+	// SetExitNodeIP accepts either IP or MagicDNS base name
+	status, err := lc.Status(ctx)
+	if err != nil {
+		return fmt.Errorf("Status (for MagicDNS exit node resolution): %w", err) //nolint:staticcheck
+	}
+
+	err = np.SetExitNodeIP(exitNodeSel, status)
+	if err != nil {
+		return fmt.Errorf("SetExitNodeIP(%q): %w", exitNodeSel, err)
 	}
 
 	mp := &ipn.MaskedPrefs{
 		Prefs:                     *np,
 		WantRunningSet:            true,
 		ExitNodeIPSet:             true,
-		ExitNodeIDSet:             true, // we cleared it; mark as intentionally set (zero)
+		ExitNodeIDSet:             true,
 		ExitNodeAllowLANAccessSet: true,
 	}
 
 	_, err = lc.EditPrefs(ctx, mp)
 	if err != nil {
 		return fmt.Errorf("EditPrefs: %w", err)
-	}
-
-	// Some clients separate "set which exit node" from "enable using it"
-	// This endpoint exists in LocalAPI
-	err = lc.SetUseExitNode(ctx, true)
-	if err != nil {
-		// If it fails, prefs alone may still work depending on version, but surface it
-		return fmt.Errorf("SetUseExitNode(true): %w", err)
 	}
 
 	return nil
