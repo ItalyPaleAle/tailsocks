@@ -21,7 +21,7 @@ const maxCacheTTL = 5 * time.Minute
 type TailscaleResolver struct {
 	lc             *local.Client
 	magicDNSSuffix string
-	cache          *ttlcache.Cache[net.IP]
+	cache          *ttlcache.Cache[string, net.IP]
 }
 
 // NewTailscaleResolver creates a new resolver that performs DNS lookups through Tailscale
@@ -29,7 +29,7 @@ func NewTailscaleResolver(lc *local.Client, magicDNSSuffix string) *TailscaleRes
 	return &TailscaleResolver{
 		lc:             lc,
 		magicDNSSuffix: magicDNSSuffix,
-		cache: ttlcache.NewCache[net.IP](&ttlcache.CacheOptions{
+		cache: ttlcache.NewCache[string, net.IP](&ttlcache.CacheOptions{
 			MaxTTL: maxCacheTTL,
 		}),
 	}

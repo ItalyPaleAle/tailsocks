@@ -4,12 +4,12 @@ go 1.25.5
 
 require (
 	github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5
-	github.com/italypaleale/go-kit v0.0.0-20251214064356-57c1a0f9caa3
+	github.com/italypaleale/go-kit v0.0.0-20260101114202-8e38f260dcc3
 	github.com/lmittmann/tint v1.1.2
 	github.com/mattn/go-isatty v0.0.20
 	github.com/spf13/pflag v1.0.10
 	golang.org/x/net v0.49.0
-	tailscale.com v1.94.0
+	tailscale.com v1.94.1
 )
 
 require (

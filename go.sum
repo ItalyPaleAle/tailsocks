@@ -104,8 +104,8 @@ github.com/illarion/gonotify/v3 v3.0.2 h1:O7S6vcopHexutmpObkeWsnzMJt/r1hONIEogeV
 github.com/illarion/gonotify/v3 v3.0.2/go.mod h1:HWGPdPe817GfvY3w7cx6zkbzNZfi3QjcBm/wgVvEL1U=
 github.com/insomniacslk/dhcp v0.0.0-20231206064809-8c70d406f6d2 h1:9K06NfxkBh25x56yVhWWlKFE8YpicaSfHwoV8SFbueA=
 github.com/insomniacslk/dhcp v0.0.0-20231206064809-8c70d406f6d2/go.mod h1:3A9PQ1cunSDF/1rbTq99Ts4pVnycWg+vlPkfeD2NLFI=
-github.com/italypaleale/go-kit v0.0.0-20251214064356-57c1a0f9caa3 h1:ovbUYc8Xek+IDwPrbly03SHaQBHbjPjwWkt7K/qZAUU=
-github.com/italypaleale/go-kit v0.0.0-20251214064356-57c1a0f9caa3/go.mod h1:fouGMuC/h+S9q3yJvvgatAL5wNBpTyRVk7oJ9+TAaTo=
+github.com/italypaleale/go-kit v0.0.0-20260101114202-8e38f260dcc3 h1:U1mrZUd8ZDOwglUQpmTsYIbnDRXdRNI+j33ZF4vJV+g=
+github.com/italypaleale/go-kit v0.0.0-20260101114202-8e38f260dcc3/go.mod h1:tOsBG9KkPW5JDVZNmawXXJ3B4hAKOlbBbXyNgG+r93A=
 github.com/jellydator/ttlcache/v3 v3.1.0 h1:0gPFG0IHHP6xyUyXq+JaD8fwkDCqgqwohXNJBcYE71g=
 github.com/jellydator/ttlcache/v3 v3.1.0/go.mod h1:hi7MGFdMAwZna5n2tuvh63DvFLzVKySzCVW6+0gA2n4=
 github.com/jmespath/go-jmespath v0.4.0 h1:BEgLn5cpjn8UN1mAw4NjwDrS35OdebyEtFe+9YPoQUg=
@@ -245,5 +245,5 @@ k8s.io/utils v0.0.0-20251002143259-bc988d571ff4 h1:SjGebBtkBqHFOli+05xYbK8YF1Dzk
 k8s.io/utils v0.0.0-20251002143259-bc988d571ff4/go.mod h1:OLgZIPagt7ERELqWJFomSt595RzquPNLL48iOWgYOg0=
 software.sslmate.com/src/go-pkcs12 v0.4.0 h1:H2g08FrTvSFKUj+D309j1DPfk5APnIdAQAB8aEykJ5k=
 software.sslmate.com/src/go-pkcs12 v0.4.0/go.mod h1:Qiz0EyvDRJjjxGyUQa2cCNZn/wMyzrRJ/qcDXOQazLI=
-tailscale.com v1.94.0 h1:5oW3SF35aU9ekHDhP2J4CHewnA2NxE7SRilDB2pVjaA=
-tailscale.com v1.94.0/go.mod h1:gLnVrEOP32GWvroaAHHGhjSGMPJ1i4DvqNwEg+Yuov4=
+tailscale.com v1.94.1 h1:0dAst/ozTuFkgmxZULc3oNwR9+qPIt5ucvzH7kaM0Jw=
+tailscale.com v1.94.1/go.mod h1:gLnVrEOP32GWvroaAHHGhjSGMPJ1i4DvqNwEg+Yuov4=
