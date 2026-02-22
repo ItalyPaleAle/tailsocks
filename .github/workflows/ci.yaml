@@ -218,14 +218,6 @@ jobs:
           echo "::add-mask::${AUTH_KEY}"
           echo "authkey=${AUTH_KEY}" >> "${GITHUB_OUTPUT}"
 
-      - name: Mask expected proxy IP
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -n "${E2E_EXPECTED_PROXY_IP}" ]]; then
-            echo "::add-mask::${E2E_EXPECTED_PROXY_IP}"
-          fi
-
       - name: Run E2E proxy test
         shell: bash
         env:
