@@ -14,7 +14,7 @@ var (
 	Production string
 )
 
-// Set during initialization
+// BuildDescription set during initialization
 var BuildDescription string
 
 func init() {
