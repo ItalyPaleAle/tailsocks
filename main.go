@@ -53,25 +53,10 @@ func main() {
 
 	// If --oauth2 flag is set, use OAuth2 credentials
 	if opts.OAuth2 {
-		credPath, err := getCredentialsPath()
-		if err != nil {
-			kitslog.FatalError(slog.Default(), "failed to determine OAuth2 credentials path", err)
-		}
-
-		creds, err := loadOAuth2Credentials(credPath)
-		if err != nil {
-			kitslog.FatalError(slog.Default(), "failed to load OAuth2 credentials", err)
-		}
-
 		// Default is ephemeral
 		ephemeral = determineEphemeralFlag(opts, true)
 
-		authKey, err = creds.GetAuthToken(ctx, ephemeral)
-		if err != nil {
-			kitslog.FatalError(slog.Default(), "failed to get Tailscale auth key using OAuth2", err)
-		}
-
-		slog.Info("Using OAuth2 credentials", "path", opts.OAuth2, "ephemeral", ephemeral)
+		authKey = getOAuth2AuthKey(ctx, ephemeral)
 	} else {
 		// Otherwise, use the standard auth key flow
 		// The auth key from CLI and env can be empty, in which case tsnet will either use the existing credentials (if the node is already registered) or prompt for interactive authentication
@@ -166,6 +151,48 @@ func main() {
 	slog.Info("Shutting down...")
 	_ = l.Close()
 	_ = s.Close()
+}
+
+// getOAuth2AuthKey retrieves the OAuth2 auth key
+// It panics in case of error
+func getOAuth2AuthKey(ctx context.Context, ephemeral bool) (authKey string) {
+	var err error
+
+	// In CI/federated workflows, an access token can be provided directly.
+	oauthAccessToken := strings.TrimSpace(os.Getenv("TS_OAUTH_ACCESS_TOKEN"))
+	if oauthAccessToken != "" {
+		oauthTag := strings.TrimSpace(os.Getenv("TS_OAUTH_TAG"))
+		creds := &OAuth2Credentials{
+			Tag: oauthTag,
+		}
+
+		authKey, err = creds.createAuthKey(ctx, oauthAccessToken, ephemeral)
+		if err != nil {
+			kitslog.FatalError(slog.Default(), "failed to create Tailscale auth key from OAuth2 access token", err)
+		}
+
+		slog.Info("Using OAuth2 access token from environment", "ephemeral", ephemeral)
+	} else {
+		// Load credentials from file
+		credPath, err := getCredentialsPath()
+		if err != nil {
+			kitslog.FatalError(slog.Default(), "failed to determine OAuth2 credentials path", err)
+		}
+
+		creds, err := loadOAuth2Credentials(credPath)
+		if err != nil {
+			kitslog.FatalError(slog.Default(), "failed to load OAuth2 credentials", err)
+		}
+
+		authKey, err = creds.GetAuthToken(ctx, ephemeral)
+		if err != nil {
+			kitslog.FatalError(slog.Default(), "failed to get Tailscale auth key using OAuth2", err)
+		}
+
+		slog.Info("Using OAuth2 credentials", "path", credPath, "ephemeral", ephemeral)
+	}
+
+	return authKey
 }
 
 func setLogger() {

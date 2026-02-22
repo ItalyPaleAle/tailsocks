@@ -43,6 +43,26 @@ func (c *OAuth2Credentials) GetAuthToken(ctx context.Context, ephemeral bool) (s
 	return authKey, nil
 }
 
+func (c *OAuth2Credentials) prepareTag() error {
+	tag := strings.TrimSpace(c.Tag)
+	if tag == "" {
+		return errors.New("tag is required in credentials file")
+	}
+
+	// Ensure the "tag:" prefix is present
+	if !strings.HasPrefix(tag, "tag:") {
+		tag = "tag:" + tag
+	}
+
+	tagEnc, err := json.Marshal(tag)
+	if err != nil {
+		return fmt.Errorf("failed to encode tag as JSON: %w", err)
+	}
+
+	c.tagEncoded = string(tagEnc)
+	return nil
+}
+
 // getAccessToken obtains an OAuth2 access token using client credentials flow
 func (c *OAuth2Credentials) getAccessToken(parentCtx context.Context) (string, error) {
 	data := url.Values{}
@@ -100,6 +120,13 @@ func (c *OAuth2Credentials) getAccessToken(parentCtx context.Context) (string, e
 
 // createAuthKey creates a Tailscale auth key using the OAuth2 access token
 func (c *OAuth2Credentials) createAuthKey(parentCtx context.Context, accessToken string, ephemeral bool) (string, error) {
+	if c.tagEncoded == "" {
+		err := c.prepareTag()
+		if err != nil {
+			return "", err
+		}
+	}
+
 	// Create an ephemeral, single-use auth key
 	// The tailnet is determined automatically by the OAuth2 client
 	const reqBodyFmt = `{"capabilities": {"devices": {"create": {"reusable": false, "ephemeral": %v, "preauthorized": true, "tags": [%s]}}}, "expirySeconds": 300}`
@@ -182,16 +209,10 @@ func loadOAuth2Credentials(path string) (*OAuth2Credentials, error) {
 	if creds.Tag == "" {
 		return nil, errors.New("tag is required in credentials file")
 	}
-
-	tag := strings.TrimSpace(creds.Tag)
-	if !strings.HasPrefix(tag, "tag:") {
-		tag = "tag:" + tag
-	}
-	tagEnc, err := json.Marshal(tag)
+	err = creds.prepareTag()
 	if err != nil {
-		return nil, fmt.Errorf("failed to encode tag as JSON: %w", err)
+		return nil, err
 	}
-	creds.tagEncoded = string(tagEnc)
 
 	return &creds, nil
 }

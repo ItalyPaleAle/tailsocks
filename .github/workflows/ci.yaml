@@ -38,3 +38,184 @@ jobs:
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
 
+  e2e-matrix:
+    name: E2E Matrix Config
+    runs-on: ubuntu-latest
+    # Secrets are not available to workflows triggered by forked pull requests
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    outputs:
+      exit_nodes: ${{ steps.parse-exit-nodes.outputs.exit_nodes }}
+    env:
+      E2E_EXIT_NODES_RAW: ${{ secrets.TAILSOCKS_E2E_EXIT_NODE }}
+    steps:
+      - name: Parse exit nodes
+        id: parse-exit-nodes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${E2E_EXIT_NODES_RAW}" ]]; then
+            echo "::error::Missing required secret TAILSOCKS_E2E_EXIT_NODE"
+            exit 1
+          fi
+
+          exit_nodes_json="$(
+            printf '%s' "${E2E_EXIT_NODES_RAW}" \
+              | tr ',' '\n' \
+              | sed -E 's/^[[:space:]]+|[[:space:]]+$//g' \
+              | sed '/^$/d' \
+              | jq -R . \
+              | jq -s -c .
+          )"
+
+          if [[ "${exit_nodes_json}" == "[]" ]]; then
+            echo "::error::TAILSOCKS_E2E_EXIT_NODE did not contain any valid exit node values"
+            exit 1
+          fi
+
+          echo "exit_nodes=${exit_nodes_json}" >> "${GITHUB_OUTPUT}"
+
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+    needs:
+      - test
+      - e2e-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        auth_mode: [authkey, oauth2]
+        exit_node: ${{ fromJson(needs.e2e-matrix.outputs.exit_nodes) }}
+    permissions:
+      contents: read
+      id-token: write
+    # Secrets are not available to workflows triggered by forked pull requests
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      E2E_EXIT_NODE: ${{ matrix.exit_node }}
+      # Optional
+      E2E_LOGIN_SERVER: ${{ secrets.TAILSOCKS_E2E_LOGIN_SERVER }}
+      E2E_EXPECTED_PROXY_IP: ${{ secrets.TAILSOCKS_E2E_EXPECTED_PROXY_IP }}
+      TS_OAUTH_CLIENT_ID: ${{ secrets.TAILSOCKS_E2E_TS_OAUTH_CLIENT_ID }}
+      TS_OAUTH_AUDIENCE: ${{ secrets.TAILSOCKS_E2E_TS_OAUTH_AUDIENCE }}
+      TS_OAUTH_TAG: ${{ secrets.TAILSOCKS_E2E_TS_OAUTH_TAG }}
+    steps:
+
+      - name: Check out code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Validate E2E secret configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${E2E_EXIT_NODE}" ]]; then
+            echo "::error::Missing required secret TAILSOCKS_E2E_EXIT_NODE"
+            exit 1
+          fi
+
+          if [[ -z "${TS_OAUTH_CLIENT_ID}" ]]; then
+            echo "::error::Missing required secret TAILSOCKS_E2E_TS_OAUTH_CLIENT_ID"
+            exit 1
+          fi
+
+          if [[ -z "${TS_OAUTH_AUDIENCE}" ]]; then
+            echo "::error::Missing required secret TAILSOCKS_E2E_TS_OAUTH_AUDIENCE"
+            exit 1
+          fi
+
+          if [[ -z "${TS_OAUTH_TAG}" ]]; then
+            echo "::error::Missing required secret TAILSOCKS_E2E_TS_OAUTH_TAG"
+            exit 1
+          fi
+
+      - name: Exchange GitHub OIDC token for Tailscale access token
+        id: ts-access-token
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          OIDC_TOKEN=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${TS_OAUTH_AUDIENCE}" \
+            | jq -r '.value')
+
+          if [[ -z "${OIDC_TOKEN}" || "${OIDC_TOKEN}" == "null" ]]; then
+            echo "Failed to get GitHub OIDC token"
+            exit 1
+          fi
+
+          echo "::add-mask::${OIDC_TOKEN}"
+
+          RESPONSE=$(curl -sS -X POST "https://api.tailscale.com/api/v2/oauth/token-exchange" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "client_id=${TS_OAUTH_CLIENT_ID}" \
+            -d "jwt=${OIDC_TOKEN}")
+
+          ACCESS_TOKEN=$(echo "${RESPONSE}" | jq -r '.access_token')
+
+          if [[ -z "${ACCESS_TOKEN}" || "${ACCESS_TOKEN}" == "null" ]]; then
+            echo "Failed to exchange token. Response: ${RESPONSE}"
+            exit 1
+          fi
+
+          echo "::add-mask::${ACCESS_TOKEN}"
+          echo "token=${ACCESS_TOKEN}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create ephemeral auth key for authkey mode
+        id: ts-authkey
+        if: matrix.auth_mode == 'authkey'
+        shell: bash
+        env:
+          ACCESS_TOKEN: ${{ steps.ts-access-token.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          TAG="${TS_OAUTH_TAG}"
+          if [[ "${TAG}" != tag:* ]]; then
+            TAG="tag:${TAG}"
+          fi
+
+          REQ_BODY="$(jq -n --arg tag "${TAG}" '{capabilities: {devices: {create: {reusable: false, ephemeral: true, preauthorized: true, tags: [$tag]}}}, expirySeconds: 300}')"
+          RESPONSE="$(curl -sS -X POST "https://api.tailscale.com/api/v2/tailnet/-/keys" \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "${REQ_BODY}")"
+
+          AUTH_KEY="$(echo "${RESPONSE}" | jq -r '.key')"
+          if [[ -z "${AUTH_KEY}" || "${AUTH_KEY}" == "null" ]]; then
+            echo "Failed to create auth key. Response: ${RESPONSE}"
+            exit 1
+          fi
+
+          echo "::add-mask::${AUTH_KEY}"
+          echo "authkey=${AUTH_KEY}" >> "${GITHUB_OUTPUT}"
+
+      - name: Mask expected proxy IP
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${E2E_EXPECTED_PROXY_IP}" ]]; then
+            echo "::add-mask::${E2E_EXPECTED_PROXY_IP}"
+          fi
+
+      - name: Run E2E proxy test
+        shell: bash
+        env:
+          TAILSCALE_ACCESS_TOKEN: ${{ steps.ts-access-token.outputs.token }}
+          GENERATED_AUTHKEY: ${{ steps.ts-authkey.outputs.authkey }}
+        run: |
+          set -euo pipefail
+          export E2E_AUTH_MODE="${{ matrix.auth_mode }}"
+          if [[ "${E2E_AUTH_MODE}" == "authkey" ]]; then
+            export E2E_TS_AUTHKEY="${GENERATED_AUTHKEY}"
+          else
+            export E2E_TS_OAUTH_ACCESS_TOKEN="${TAILSCALE_ACCESS_TOKEN}"
+            export E2E_TS_OAUTH_TAG="${TS_OAUTH_TAG}"
+          fi
+          bash tests/e2e.sh
