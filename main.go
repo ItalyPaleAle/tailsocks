@@ -66,7 +66,7 @@ func main() {
 		}
 
 		// Default is persistent
-		ephemeral = determineEphemeralFlag(opts, true)
+		ephemeral = determineEphemeralFlag(opts, false)
 	}
 
 	s := &tsnet.Server{
