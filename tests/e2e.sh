@@ -12,6 +12,8 @@ AUTH_MODE="${E2E_AUTH_MODE:-authkey}"
 EXIT_NODE="${E2E_EXIT_NODE:-}"
 LOGIN_SERVER="${E2E_LOGIN_SERVER:-}"
 EXPECTED_PROXY_IP="${E2E_EXPECTED_PROXY_IP:-}"
+TAILSOCKS_BIN="${E2E_TAILSOCKS_BIN:-}"
+PREFER_PRECOMPILED_BIN="${E2E_PREFER_PRECOMPILED_BINARY:-true}"
 WAIT_TIMEOUT_SEC="${E2E_WAIT_TIMEOUT_SEC:-90}"
 WAIT_INTERVAL_SEC="${E2E_WAIT_INTERVAL_SEC:-1}"
 HOSTNAME="${E2E_HOSTNAME:-tailsocks-e2e-$(date +%s)}"
@@ -55,8 +57,36 @@ fail() {
   exit 1
 }
 
+TAILSOCKS_LAUNCHER=()
+TAILSOCKS_LAUNCHER_DESC=""
+
+if [[ -n "${TAILSOCKS_BIN}" ]]; then
+  if [[ ! -x "${TAILSOCKS_BIN}" ]]; then
+    fail "E2E_TAILSOCKS_BIN is set but is not executable: ${TAILSOCKS_BIN}"
+  fi
+  TAILSOCKS_LAUNCHER=("${TAILSOCKS_BIN}")
+  TAILSOCKS_LAUNCHER_DESC="precompiled binary (${TAILSOCKS_BIN})"
+elif [[ "${PREFER_PRECOMPILED_BIN}" == "true" ]]; then
+  for candidate in \
+    "${REPO_ROOT}/tailsocks" \
+    "${REPO_ROOT}/.bin/tailsocks-e2e" \
+    "${REPO_ROOT}/bin/tailsocks-e2e"
+  do
+    if [[ -x "${candidate}" ]]; then
+      TAILSOCKS_LAUNCHER=("${candidate}")
+      TAILSOCKS_LAUNCHER_DESC="precompiled binary (${candidate})"
+      break
+    fi
+  done
+fi
+
+if [[ ${#TAILSOCKS_LAUNCHER[@]} -eq 0 ]]; then
+  TAILSOCKS_LAUNCHER=(go run .)
+  TAILSOCKS_LAUNCHER_DESC="go run"
+fi
+
 run_cmd=(
-  go run .
+  "${TAILSOCKS_LAUNCHER[@]}"
   --exit-node "${EXIT_NODE}"
   --socks-addr "${SOCKS_ADDR}"
   --state-dir "${STATE_DIR}"
@@ -109,7 +139,7 @@ if [[ -n "${LOGIN_SERVER}" ]]; then
   run_cmd+=(--login-server "${LOGIN_SERVER}")
 fi
 
-echo "Starting tailsocks with SOCKS5 on ${SOCKS_ADDR}"
+echo "Starting tailsocks (${TAILSOCKS_LAUNCHER_DESC}) with SOCKS5 on ${SOCKS_ADDR}"
 
 (
   cd "${REPO_ROOT}"

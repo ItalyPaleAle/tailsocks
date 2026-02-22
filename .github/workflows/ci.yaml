@@ -21,6 +21,7 @@ jobs:
       contents: read
     env:
       GOLANGCI_LINT_VERSION: "v2.9.0"
+      CGO_ENABLED: "0"
     steps:
 
       - name: Check out code
@@ -37,6 +38,21 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
+
+      - name: Build E2E binary (linux/amd64)
+        run: |
+          mkdir -p .bin
+
+          GOOS=linux GOARCH=amd64 \
+            go build -trimpath -o .bin/tailsocks-e2e ./
+
+      - name: Upload E2E binary artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: tailsocks-e2e-linux-amd64
+          path: .bin/tailsocks-e2e
+          if-no-files-found: error
+          compression-level: 0
 
   e2e-matrix:
     name: E2E Matrix Config
@@ -96,6 +112,7 @@ jobs:
       # Optional
       E2E_LOGIN_SERVER: ${{ secrets.TAILSOCKS_E2E_LOGIN_SERVER }}
       E2E_EXPECTED_PROXY_IP: ${{ secrets.TAILSOCKS_E2E_EXPECTED_PROXY_IP }}
+      E2E_TAILSOCKS_BIN: ${{ github.workspace }}/.ci-bin/tailsocks-e2e
       TS_OAUTH_CLIENT_ID: ${{ secrets.TAILSOCKS_E2E_TS_OAUTH_CLIENT_ID }}
       TS_OAUTH_AUDIENCE: ${{ secrets.TAILSOCKS_E2E_TS_OAUTH_AUDIENCE }}
       TS_OAUTH_TAG: ${{ secrets.TAILSOCKS_E2E_TS_OAUTH_TAG }}
@@ -104,11 +121,16 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v6
 
-      - name: Set up Go
-        uses: actions/setup-go@v6
+      - name: Download E2E binary artifact
+        uses: actions/download-artifact@v7
         with:
-          go-version-file: 'go.mod'
-          cache: true
+          name: tailsocks-e2e-linux-amd64
+          path: .ci-bin
+
+      - name: Make E2E binary executable
+        shell: bash
+        run: |
+          chmod +x "${E2E_TAILSOCKS_BIN}"
 
       - name: Validate E2E secret configuration
         shell: bash

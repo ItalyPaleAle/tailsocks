@@ -22,6 +22,8 @@ The script always runs with `--ephemeral=true` and always uses a temporary `--st
 - `E2E_SOCKS_PORT` (default: `5040`)
 - `E2E_LOGIN_SERVER` (optional custom control server)
 - `E2E_EXPECTED_PROXY_IP` (optional; if set, proxied IP must match this value)
+- `E2E_TAILSOCKS_BIN` (optional; explicit path to precompiled `tailsocks` binary)
+- `E2E_PREFER_PRECOMPILED_BINARY` (default: `true`; auto-detect local binary before `go run`)
 - `E2E_AUTH_MODE` (`authkey` or `oauth2`, default: `authkey`)
 - `E2E_IP_CHECK_URL` (default: `https://api.ipify.org`)
 - `E2E_WAIT_TIMEOUT_SEC` (default: `90`)
@@ -76,6 +78,7 @@ The CI workflow (`.github/workflows/ci.yaml`) runs this script in an `e2e` matri
 - `oauth2`
 
 It also splits `TAILSOCKS_E2E_EXIT_NODE` by commas and runs the matrix for each exit node.
+The `test` job builds a Linux `tailsocks` binary artifact, and the `e2e` job downloads it and runs `tests/e2e.sh` with `E2E_TAILSOCKS_BIN` so Go does not need to be installed twice.
 
 Configure these repository secrets:
 
