@@ -8,7 +8,7 @@ require (
 	github.com/lmittmann/tint v1.1.3
 	github.com/mattn/go-isatty v0.0.20
 	github.com/spf13/pflag v1.0.10
-	golang.org/x/net v0.50.0
+	golang.org/x/net v0.51.0
 	tailscale.com v1.94.2
 )
 
