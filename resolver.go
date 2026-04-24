@@ -15,7 +15,14 @@ import (
 	"tailscale.com/client/local"
 )
 
-const maxCacheTTL = 5 * time.Minute
+const (
+	maxCacheTTL = 5 * time.Minute
+	// minCacheTTL is the floor applied before handing a TTL to the cache.
+	// ttlcache.Set panics on TTLs below 1ms, and upstream DNS can legitimately
+	// return TTL=0 (e.g. CDN load-balancer records), which would otherwise
+	// crash the resolver on every such lookup.
+	minCacheTTL = time.Second
+)
 
 // TailscaleResolver resolves DNS names through Tailscale
 type TailscaleResolver struct {
@@ -78,12 +85,12 @@ func (r *TailscaleResolver) Resolve(ctx context.Context, name string) (context.C
 	// Check if we have an A record first, then AAAA
 	if res.A.err == nil && len(res.A.records) > 0 {
 		ip := res.A.records[0].AsSlice()
-		r.cache.Set(name, ip, min(res.A.ttl, maxCacheTTL))
+		r.cache.Set(name, ip, clampCacheTTL(res.A.ttl))
 		return ctx, ip, nil
 	}
 	if res.AAA.err == nil && len(res.AAA.records) > 0 {
 		ip := res.AAA.records[0].AsSlice()
-		r.cache.Set(name, ip, min(res.AAA.ttl, maxCacheTTL))
+		r.cache.Set(name, ip, clampCacheTTL(res.AAA.ttl))
 		return ctx, ip, nil
 	}
 
@@ -134,6 +141,18 @@ func (r *TailscaleResolver) resolveDNS(ctx context.Context, name string, qt stri
 		return nil, 0, fmt.Errorf("parse %s response: %w", qt, err)
 	}
 	return addrs, ttl, nil
+}
+
+// clampCacheTTL bounds a DNS-derived TTL to the range [minCacheTTL, maxCacheTTL]
+// before it is handed to ttlcache.Set, which panics on TTLs below 1ms.
+func clampCacheTTL(ttl time.Duration) time.Duration {
+	if ttl < minCacheTTL {
+		return minCacheTTL
+	}
+	if ttl > maxCacheTTL {
+		return maxCacheTTL
+	}
+	return ttl
 }
 
 func (r *TailscaleResolver) ensureTrailingDot(s string) string {
