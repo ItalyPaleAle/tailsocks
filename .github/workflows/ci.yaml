@@ -20,7 +20,7 @@ jobs:
     permissions:
       contents: read
     env:
-      GOLANGCI_LINT_VERSION: "v2.9.0"
+      GOLANGCI_LINT_VERSION: "v2.11.4"
       CGO_ENABLED: "0"
     steps:
 
@@ -35,7 +35,7 @@ jobs:
           cache: false
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
 
@@ -47,7 +47,7 @@ jobs:
             go build -trimpath -o .bin/tailsocks-e2e ./
 
       - name: Upload E2E binary artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: tailsocks-e2e-linux-amd64
           path: .bin/tailsocks-e2e

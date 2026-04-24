@@ -229,6 +229,7 @@ func saveOAuth2Credentials(path string, creds *OAuth2Credentials) error {
 		return fmt.Errorf("failed to create credentials directory '%s': %w", dir, err)
 	}
 
+	// #nosec G117 - The credentials are meant to be saved to disk
 	data, err := json.MarshalIndent(creds, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to encode credentials as JSON: %w", err)
