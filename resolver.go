@@ -17,10 +17,7 @@ import (
 
 const (
 	maxCacheTTL = 5 * time.Minute
-	// minCacheTTL is the floor applied before handing a TTL to the cache.
-	// ttlcache.Set panics on TTLs below 1ms, and upstream DNS can legitimately
-	// return TTL=0 (e.g. CDN load-balancer records), which would otherwise
-	// crash the resolver on every such lookup.
+	// minCacheTTL is the floor applied before handing a TTL to the cache
 	minCacheTTL = time.Second
 )
 
@@ -143,8 +140,8 @@ func (r *TailscaleResolver) resolveDNS(ctx context.Context, name string, qt stri
 	return addrs, ttl, nil
 }
 
-// clampCacheTTL bounds a DNS-derived TTL to the range [minCacheTTL, maxCacheTTL]
-// before it is handed to ttlcache.Set, which panics on TTLs below 1ms.
+// clampCacheTTL bounds a DNS-derived TTL to the range [minCacheTTL, maxCacheTTL] before it is handed to ttlcache.Set, which panics on TTLs below 1ms
+// Upstream DNS can legitimately return TTL=0 (e.g. CDN load-balancer records)
 func clampCacheTTL(ttl time.Duration) time.Duration {
 	if ttl < minCacheTTL {
 		return minCacheTTL
