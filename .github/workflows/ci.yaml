@@ -34,6 +34,11 @@ jobs:
           # Use cache from golangci-lint
           cache: false
 
+      - name: Check Go dependency minimum age
+        run: |
+          go install github.com/fchimpan/gomod-age@09005169a4792ad1a4824e1fc6d85785d91cea36
+          gomod-age
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:

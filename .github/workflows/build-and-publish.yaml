@@ -24,10 +24,14 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
-          cache: true
+          # Do not cache in release workflows
+          cache: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          # Do not cache in release workflows
+          cache-binary: false
 
       # Lowercase REPO_OWNER which is required for containers
       - name: Set lowercase REPO_OWNER
