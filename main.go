@@ -121,7 +121,8 @@ func main() {
 	// Use Tailscale DNS resolver by default, unless --local-dns is set
 	if !opts.LocalDNS {
 		socksConfig.Resolver = NewTailscaleResolver(lc, st.CurrentTailnet.MagicDNSSuffix)
-		slog.Info("Using Tailscale DNS resolver", "magicDNSEnabled", st.CurrentTailnet.MagicDNSEnabled)
+		magicDNSEnabled := st.CurrentTailnet != nil && st.CurrentTailnet.MagicDNSEnabled
+		slog.Info("Using Tailscale DNS resolver", "magicDNSEnabled", magicDNSEnabled)
 	} else {
 		slog.Info("Using local DNS resolver")
 	}
@@ -141,14 +142,20 @@ func main() {
 	slog.Info("SOCKS5 proxy listening", "addr", "socks5://"+opts.SocksAddr)
 
 	// Shutdown handling
+	doneCh := make(chan struct{})
 	go func() {
 		err = socksServer.Serve(l)
 		if err != nil {
 			slog.Warn("SOCKS server stopped", "error", err)
 		}
+		close(doneCh)
 	}()
 
-	<-ctx.Done()
+	// Wait until either the context is canceled, or the server has returned
+	select {
+	case <-ctx.Done():
+	case <-doneCh:
+	}
 
 	slog.Info("Shutting down...")
 	_ = l.Close()

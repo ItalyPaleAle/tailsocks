@@ -40,9 +40,14 @@ You can run TailSocks as a Docker/Podman container. Container images are availab
 docker run \
   -d \
   --rm \
+  -p 127.0.0.1:5040:5040 \
+  -v tailsocks-state:/data \
   ghcr.io/italypaleale/tailsocks:1 \
+  --socks-addr 0.0.0.0:5040 \
   --exit-node home-server
 ```
+
+The container's working directory is `/data`, where tsnet writes its state (`/data/tsnet-state`) by default. Mount a volume there to persist the node identity across restarts, otherwise the node re-registers each time.
 
 > TailSocks follows semver for versioning. The command above uses the latest version in the 1.x branch. We do not publish a container image tagged "latest".
 

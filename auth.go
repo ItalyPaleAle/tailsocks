@@ -43,7 +43,8 @@ func (c *OAuth2Credentials) GetAuthToken(ctx context.Context, ephemeral bool) (s
 }
 
 func (c *OAuth2Credentials) prepareTag() error {
-	tag := strings.TrimSpace(c.Tag)
+	// Tailscale ACL tags are case-insensitive; normalize so "Tag:foo" doesn't become "tag:Tag:foo"
+	tag := strings.ToLower(strings.TrimSpace(c.Tag))
 	if tag == "" {
 		return errors.New("tag is required")
 	}
@@ -55,6 +56,52 @@ func (c *OAuth2Credentials) prepareTag() error {
 
 	c.Tag = tag
 	return nil
+}
+
+// doRequestWithRetry executes a request via http.DefaultClient with retries on transient failures (network errors and 5xx responses)
+// The request body must be replayable, which http.NewRequestWithContext arranges automatically for *bytes.Reader / *strings.Reader bodies
+// The per-request context timeout already bounds each attempt
+func doRequestWithRetry(r *http.Request) (*http.Response, error) {
+	const maxAttempts = 3
+	var lastErr error
+	for attempt := range maxAttempts {
+		if attempt > 0 {
+			if r.GetBody != nil {
+				body, err := r.GetBody()
+				if err != nil {
+					return nil, fmt.Errorf("failed to reset request body for retry: %w", err)
+				}
+				r.Body = body
+			}
+			backoff := time.Duration(1<<(attempt-1)) * time.Second
+			select {
+			case <-r.Context().Done():
+				return nil, fmt.Errorf("context canceled: %w", r.Context().Err())
+			case <-time.After(backoff):
+			}
+		}
+
+		// #nosec G704 -- We are connecting to Tailscale's APIs, SSRF is not a realistic concern
+		res, err := http.DefaultClient.Do(r)
+		if err != nil {
+			// If context is canceled, return
+			if r.Context().Err() != nil {
+				return nil, fmt.Errorf("context canceled: %w", r.Context().Err())
+			}
+			lastErr = err
+			continue
+		}
+
+		if res.StatusCode >= 500 && res.StatusCode < 600 {
+			_ = res.Body.Close()
+			lastErr = fmt.Errorf("server returned status %d", res.StatusCode)
+			continue
+		}
+
+		return res, nil
+	}
+
+	return nil, lastErr
 }
 
 // getAccessToken obtains an OAuth2 access token using client credentials flow
@@ -74,7 +121,7 @@ func (c *OAuth2Credentials) getAccessToken(parentCtx context.Context) (string, e
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", userAgent)
 
-	res, err := http.DefaultClient.Do(req)
+	res, err := doRequestWithRetry(req)
 	if err != nil {
 		return "", fmt.Errorf("request failed: %w", err)
 	}
@@ -155,7 +202,7 @@ func (c *OAuth2Credentials) createAuthKey(parentCtx context.Context, accessToken
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", userAgent)
 
-	res, err := http.DefaultClient.Do(req)
+	res, err := doRequestWithRetry(req)
 	if err != nil {
 		return "", fmt.Errorf("request failed: %w", err)
 	}

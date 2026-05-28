@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/pflag"
 )
@@ -50,6 +52,11 @@ func ParseFlags() (*Options, error) {
 	// Check if --ephemeral flag was explicitly set
 	if pflag.CommandLine.Changed("ephemeral") {
 		cfg.Ephemeral = &ephemeral
+	}
+
+	// --oauth2 takes its auth from OAuth2 credentials; a passed --authkey would be silently ignored
+	if cfg.OAuth2 && strings.TrimSpace(cfg.AuthKey) != "" {
+		return nil, errors.New("--authkey cannot be used together with --oauth2")
 	}
 
 	return cfg, nil

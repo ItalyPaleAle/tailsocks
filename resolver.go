@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net"
 	"net/netip"
 	"strings"
@@ -43,6 +44,9 @@ func NewTailscaleResolver(lc *local.Client, magicDNSSuffix string) *TailscaleRes
 // It resolves the given hostname to an IP address using Tailscale.
 // Results are cached for up to 5 minutes or the record's TTL, whichever is shorter.
 func (r *TailscaleResolver) Resolve(ctx context.Context, name string) (context.Context, net.IP, error) {
+	// Normalize the name so the cache key and DNS query agree regardless of casing or stray whitespace
+	name = strings.ToLower(strings.TrimSpace(name))
+
 	// Check cache first
 	cached, ok := r.cache.Get(name)
 	if ok {
@@ -80,13 +84,14 @@ func (r *TailscaleResolver) Resolve(ctx context.Context, name string) (context.C
 	wg.Wait()
 
 	// Check if we have an A record first, then AAAA
+	// When multiple records are returned, pick one at random to spread load across endpoints
 	if res.A.err == nil && len(res.A.records) > 0 {
-		ip := res.A.records[0].AsSlice()
+		ip := res.A.records[rand.IntN(len(res.A.records))].AsSlice() // #nosec G404 -- Random number is only used to pick an item from the slice
 		r.cache.Set(name, ip, clampCacheTTL(res.A.ttl))
 		return ctx, ip, nil
 	}
 	if res.AAAA.err == nil && len(res.AAAA.records) > 0 {
-		ip := res.AAAA.records[0].AsSlice()
+		ip := res.AAAA.records[rand.IntN(len(res.AAAA.records))].AsSlice() // #nosec G404 -- Random number is only used to pick an item from the slice
 		r.cache.Set(name, ip, clampCacheTTL(res.AAAA.ttl))
 		return ctx, ip, nil
 	}
@@ -109,8 +114,7 @@ func (r *TailscaleResolver) Resolve(ctx context.Context, name string) (context.C
 // - If that returns NXDOMAIN, retry "name.<MagicDNSSuffix>.
 // - Uses tailscaled LocalAPI (QueryDNS), so it supports MagicDNS/split DNS
 func (r *TailscaleResolver) resolveDNS(ctx context.Context, name string, qt string) ([]netip.Addr, time.Duration, error) {
-	name = strings.TrimSpace(name)
-	isShort := !strings.Contains(name, ".") && !strings.HasSuffix(name, ".")
+	isShort := !strings.Contains(name, ".")
 	baseQname := r.ensureTrailingDot(name)
 
 	res, _, err := r.lc.QueryDNS(ctx, baseQname, qt)
