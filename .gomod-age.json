@@ -2,6 +2,7 @@
   "age": "7d",
   "ignore": [
     "github.com/italypaleale/*",
-    "golang.org/x/*"
+    "golang.org/x/*",
+    "tailscale.com"
   ]
 }
