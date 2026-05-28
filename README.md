@@ -40,7 +40,8 @@ You can run TailSocks as a Docker/Podman container. Container images are availab
 docker run \
   -d \
   --rm \
-  ghcr.io/italypaleale/tailsocks:1
+  ghcr.io/italypaleale/tailsocks:1 \
+  --exit-node home-server
 ```
 
 > TailSocks follows semver for versioning. The command above uses the latest version in the 1.x branch. We do not publish a container image tagged "latest".

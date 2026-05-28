@@ -119,12 +119,14 @@ func main() {
 	}
 
 	// Use Tailscale DNS resolver by default, unless --local-dns is set
-	if !opts.LocalDNS && st.CurrentTailnet.MagicDNSEnabled {
+	if !opts.LocalDNS {
 		socksConfig.Resolver = NewTailscaleResolver(lc, st.CurrentTailnet.MagicDNSSuffix)
-		slog.Info("Using Tailscale DNS resolver")
+		slog.Info("Using Tailscale DNS resolver", "magicDNSEnabled", st.CurrentTailnet.MagicDNSEnabled)
 	} else {
 		slog.Info("Using local DNS resolver")
 	}
+
+	warnIfNonLoopbackSocksAddr(opts.SocksAddr)
 
 	socksServer, err := socks5.New(socksConfig)
 	if err != nil {
@@ -162,6 +164,10 @@ func getOAuth2AuthKey(ctx context.Context, ephemeral bool) (authKey string) {
 	oauthAccessToken := strings.TrimSpace(os.Getenv("TS_OAUTH_ACCESS_TOKEN"))
 	if oauthAccessToken != "" {
 		oauthTag := strings.TrimSpace(os.Getenv("TS_OAUTH_TAG"))
+		if oauthTag == "" {
+			kitslog.FatalError(slog.Default(), "missing TS_OAUTH_TAG for OAuth2 access token authentication", errors.New("TS_OAUTH_TAG is required when TS_OAUTH_ACCESS_TOKEN is set"))
+		}
+
 		creds := &OAuth2Credentials{
 			Tag: oauthTag,
 		}
@@ -205,6 +211,33 @@ func setLogger() {
 	}
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
+}
+
+func warnIfNonLoopbackSocksAddr(addr string) {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		slog.Warn("Could not determine SOCKS5 bind address security", "addr", addr, "error", err)
+		return
+	}
+
+	if host == "" {
+		slog.Warn("SOCKS5 proxy is listening on all interfaces without authentication", "addr", addr)
+		return
+	}
+
+	ip := net.ParseIP(host)
+	if ip != nil {
+		if !ip.IsLoopback() {
+			// Show a warning
+			slog.Warn("SOCKS5 proxy is listening on a non-loopback address without authentication", "addr", addr)
+		}
+		return
+	}
+
+	if host != "localhost" {
+		// Show a warning
+		slog.Warn("SOCKS5 proxy is listening on a non-loopback hostname without authentication", "addr", addr, "host", host)
+	}
 }
 
 func setExitNodePrefs(ctx context.Context, lc *local.Client, exitNodeSel string, allowLAN bool) error {

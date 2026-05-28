@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -23,8 +24,6 @@ type OAuth2Credentials struct {
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
 	Tag          string `json:"tag"`
-
-	tagEncoded string
 }
 
 func (c *OAuth2Credentials) GetAuthToken(ctx context.Context, ephemeral bool) (string, error) {
@@ -46,7 +45,7 @@ func (c *OAuth2Credentials) GetAuthToken(ctx context.Context, ephemeral bool) (s
 func (c *OAuth2Credentials) prepareTag() error {
 	tag := strings.TrimSpace(c.Tag)
 	if tag == "" {
-		return errors.New("tag is required in credentials file")
+		return errors.New("tag is required")
 	}
 
 	// Ensure the "tag:" prefix is present
@@ -54,12 +53,7 @@ func (c *OAuth2Credentials) prepareTag() error {
 		tag = "tag:" + tag
 	}
 
-	tagEnc, err := json.Marshal(tag)
-	if err != nil {
-		return fmt.Errorf("failed to encode tag as JSON: %w", err)
-	}
-
-	c.tagEncoded = string(tagEnc)
+	c.Tag = tag
 	return nil
 }
 
@@ -120,22 +114,40 @@ func (c *OAuth2Credentials) getAccessToken(parentCtx context.Context) (string, e
 
 // createAuthKey creates a Tailscale auth key using the OAuth2 access token
 func (c *OAuth2Credentials) createAuthKey(parentCtx context.Context, accessToken string, ephemeral bool) (string, error) {
-	if c.tagEncoded == "" {
-		err := c.prepareTag()
-		if err != nil {
-			return "", err
-		}
+	err := c.prepareTag()
+	if err != nil {
+		return "", err
 	}
 
-	// Create an ephemeral, single-use auth key
-	// The tailnet is determined automatically by the OAuth2 client
-	const reqBodyFmt = `{"capabilities": {"devices": {"create": {"reusable": false, "ephemeral": %v, "preauthorized": true, "tags": [%s]}}}, "expirySeconds": 300}`
-	reqBody := fmt.Sprintf(reqBodyFmt, ephemeral, c.tagEncoded)
+	// The tailnet is determined automatically by the OAuth2 client.
+	reqBody := struct {
+		Capabilities struct {
+			Devices struct {
+				Create struct {
+					Reusable      bool     `json:"reusable"`
+					Ephemeral     bool     `json:"ephemeral"`
+					Preauthorized bool     `json:"preauthorized"`
+					Tags          []string `json:"tags"`
+				} `json:"create"`
+			} `json:"devices"`
+		} `json:"capabilities"`
+		ExpirySeconds int `json:"expirySeconds"`
+	}{}
+	reqBody.Capabilities.Devices.Create.Reusable = false
+	reqBody.Capabilities.Devices.Create.Ephemeral = ephemeral
+	reqBody.Capabilities.Devices.Create.Preauthorized = true
+	reqBody.Capabilities.Devices.Create.Tags = []string{c.Tag}
+	reqBody.ExpirySeconds = 300
+
+	reqBodyData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to encode auth key request: %w", err)
+	}
 
 	// Use "-" as tailnet to indicate "the tailnet of the authenticated user"
 	ctx, cancel := context.WithTimeout(parentCtx, 30*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.tailscale.com/api/v2/tailnet/-/keys", strings.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.tailscale.com/api/v2/tailnet/-/keys", bytes.NewReader(reqBodyData))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}

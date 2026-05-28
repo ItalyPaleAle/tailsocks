@@ -70,7 +70,7 @@ func (r *TailscaleResolver) Resolve(ctx context.Context, name string) (context.C
 		}
 	})
 	wg.Go(func() {
-		records, ttl, err := r.resolveDNS(ctx, name, "AAA")
+		records, ttl, err := r.resolveDNS(ctx, name, "AAAA")
 		res.AAAA = resMsg{
 			records: records,
 			ttl:     ttl,
