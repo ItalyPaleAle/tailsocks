@@ -49,15 +49,15 @@ func (r *TailscaleResolver) Resolve(ctx context.Context, name string) (context.C
 		return ctx, cached, nil
 	}
 
-	// Perform lookups for A and AAA records in parallel
+	// Perform lookups for A and AAAA records in parallel
 	type resMsg struct {
 		records []netip.Addr
 		ttl     time.Duration
 		err     error
 	}
 	var res struct {
-		A   resMsg
-		AAA resMsg
+		A    resMsg
+		AAAA resMsg
 	}
 
 	var wg sync.WaitGroup
@@ -71,7 +71,7 @@ func (r *TailscaleResolver) Resolve(ctx context.Context, name string) (context.C
 	})
 	wg.Go(func() {
 		records, ttl, err := r.resolveDNS(ctx, name, "AAA")
-		res.AAA = resMsg{
+		res.AAAA = resMsg{
 			records: records,
 			ttl:     ttl,
 			err:     err,
@@ -85,9 +85,9 @@ func (r *TailscaleResolver) Resolve(ctx context.Context, name string) (context.C
 		r.cache.Set(name, ip, clampCacheTTL(res.A.ttl))
 		return ctx, ip, nil
 	}
-	if res.AAA.err == nil && len(res.AAA.records) > 0 {
-		ip := res.AAA.records[0].AsSlice()
-		r.cache.Set(name, ip, clampCacheTTL(res.AAA.ttl))
+	if res.AAAA.err == nil && len(res.AAAA.records) > 0 {
+		ip := res.AAAA.records[0].AsSlice()
+		r.cache.Set(name, ip, clampCacheTTL(res.AAAA.ttl))
 		return ctx, ip, nil
 	}
 
@@ -102,7 +102,7 @@ func (r *TailscaleResolver) Resolve(ctx context.Context, name string) (context.C
 }
 
 // resolveDNS performs DNS resolution using a behavior like Tailscale.
-// It supports A and AAA records as qt.
+// It supports A and AAAA records as qt.
 //
 // - If name contains a dot (.) it's treated as "already qualified": no expansion
 // - If name is short (no dot), first try "name." (root-relative)
