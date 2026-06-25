@@ -17,6 +17,21 @@ PREFER_PRECOMPILED_BIN="${E2E_PREFER_PRECOMPILED_BINARY:-true}"
 WAIT_TIMEOUT_SEC="${E2E_WAIT_TIMEOUT_SEC:-90}"
 WAIT_INTERVAL_SEC="${E2E_WAIT_INTERVAL_SEC:-1}"
 HOSTNAME="${E2E_HOSTNAME:-tailsocks-e2e-$(date +%s)}"
+TEST_TCP_FORWARD="${E2E_TEST_TCP_FORWARD:-true}"
+TCP_FORWARD_HOST="${E2E_TCP_FORWARD_HOST:-127.0.0.1}"
+TCP_FORWARD_PORT="${E2E_TCP_FORWARD_PORT:-5043}"
+
+# Derive the target host and port from the IP check URL so the TCP forward
+# points at the same service used for the SOCKS5 check.
+url_no_scheme="${IP_CHECK_URL#*://}"
+TARGET_HOST="${url_no_scheme%%/*}"
+TARGET_HOST="${TARGET_HOST%%:*}"
+if [[ "${IP_CHECK_URL}" == http://* ]]; then
+  TARGET_PORT="80"
+else
+  TARGET_PORT="443"
+fi
+TCP_FORWARD_ADDR="${TCP_FORWARD_HOST}:${TCP_FORWARD_PORT}"
 
 if [[ -z "${EXIT_NODE}" ]]; then
   echo "E2E_EXIT_NODE is required" >&2
@@ -93,6 +108,10 @@ run_cmd=(
   --hostname "${HOSTNAME}"
   --ephemeral=true
 )
+
+if [[ "${TEST_TCP_FORWARD}" == "true" ]]; then
+  run_cmd+=(--tcp "${TCP_FORWARD_ADDR}=${TARGET_HOST}:${TARGET_PORT}")
+fi
 
 case "${AUTH_MODE}" in
   authkey)
@@ -200,3 +219,44 @@ if [[ "${HOST_IP}" == "${PROXY_IP}" ]]; then
 fi
 
 echo "PASS: proxied IP is different from host IP"
+
+if [[ "${TEST_TCP_FORWARD}" == "true" ]]; then
+  echo "Testing TCP port forward on ${TCP_FORWARD_ADDR} -> ${TARGET_HOST}:${TARGET_PORT}..."
+
+  FORWARD_IP=""
+  deadline=$((SECONDS + WAIT_TIMEOUT_SEC))
+  while (( SECONDS < deadline )); do
+    if ! kill -0 "${TAILSOCKS_PID}" 2>/dev/null; then
+      fail "tailsocks process exited before TCP forward became ready"
+    fi
+
+    # Reach the target through the local forward. --connect-to keeps the
+    # original hostname for TLS SNI and certificate validation while routing
+    # the connection to the local forwarder.
+    if FORWARD_IP="$(curl --fail --silent --show-error --max-time 10 \
+      --connect-to "${TARGET_HOST}:${TARGET_PORT}:${TCP_FORWARD_ADDR}" \
+      "${IP_CHECK_URL}" 2>/dev/null)"; then
+      if [[ -n "${FORWARD_IP}" ]]; then
+        break
+      fi
+    fi
+
+    sleep "${WAIT_INTERVAL_SEC}"
+  done
+
+  if [[ -z "${FORWARD_IP}" ]]; then
+    fail "timed out reaching target through TCP forward at ${TCP_FORWARD_ADDR}"
+  fi
+
+  echo "TCP forward IP: ${FORWARD_IP}"
+
+  if [[ "${HOST_IP}" == "${FORWARD_IP}" ]]; then
+    fail "expected different IP when routing through TCP forward, but both were '${HOST_IP}'"
+  fi
+
+  if [[ "${PROXY_IP}" != "${FORWARD_IP}" ]]; then
+    fail "expected TCP forward IP ('${FORWARD_IP}') to match proxied IP ('${PROXY_IP}'), since both route through the exit node"
+  fi
+
+  echo "PASS: TCP forward routes through the exit node"
+fi
