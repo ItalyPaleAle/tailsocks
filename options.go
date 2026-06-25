@@ -19,6 +19,7 @@ type Options struct {
 	OAuth2      bool
 	ExitNode    string
 	AllowLAN    bool
+	TCPForwards []string
 	LoginServer string
 	Ephemeral   *bool
 	LocalDNS    bool
@@ -38,6 +39,7 @@ func ParseFlags() (*Options, error) {
 	pflag.BoolVarP(&cfg.OAuth2, "oauth2", "o", false, "Use OAuth2 credentials for authentication. When set, node is ephemeral by default.")
 	pflag.StringVarP(&cfg.ExitNode, "exit-node", "x", "", "Exit node selector: IP or MagicDNS base name (e.g. 'home-exit'). Required.")
 	pflag.BoolVarP(&cfg.AllowLAN, "exit-node-allow-lan-access", "l", false, "Allow access to local LAN while using exit node")
+	pflag.StringSliceVarP(&cfg.TCPForwards, "tcp", "t", nil, "Forward a local TCP port to a remote host through the exit node, in the form 'LISTEN=TARGET' (e.g. '127.0.0.1:3900=test.com:3900'). Can be repeated to forward multiple ports.")
 	pflag.StringVarP(&cfg.LoginServer, "login-server", "c", "", "Optional control server URL (e.g. https://controlplane.tld for Headscale)")
 	pflag.BoolVarP(&ephemeral, "ephemeral", "e", false, "Make this node ephemeral (auto-cleanup on disconnect)")
 	pflag.BoolVar(&cfg.LocalDNS, "local-dns", false, "Use local DNS resolver instead of resolving DNS through Tailscale")

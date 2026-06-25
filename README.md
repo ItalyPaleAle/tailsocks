@@ -99,6 +99,30 @@ tailsocks --exit-node home-server --socks-addr 127.0.0.1:8080
 tailsocks --exit-node home-server --exit-node-allow-lan-access
 ```
 
+### TCP Port Forwarding
+
+TailSocks can also forward a local TCP port to a remote host, routing the traffic through the selected exit node. This allows forwarding traffic for applications that may not support SOCKS5 proxies.
+
+Use the `--tcp` (or `-t`) flag with a rule in the form `LISTEN=TARGET`:
+
+```sh
+# Listen on 127.0.0.1:3900 and forward to test.com:3900 through the exit node
+tailsocks --exit-node home-server --tcp 127.0.0.1:3900=test.com:3900
+```
+
+- `LISTEN` is the local address to bind to, as `host:port` (e.g. `127.0.0.1:3900`). Use `:3900` or `0.0.0.0:3900` to listen on all interfaces.
+- `TARGET` is the remote address to forward to, as `host:port` (e.g. `test.com:3900`). The host may be an IP address or a DNS/MagicDNS name, which is resolved through Tailscale (unless `--local-dns` is set).
+
+The `--tcp` flag can be repeated to forward multiple ports at once:
+
+```sh
+tailsocks --exit-node home-server \
+  --tcp 127.0.0.1:3900=test.com:3900 \
+  --tcp 127.0.0.1:5432=db.internal:5432
+```
+
+> **Warning:** forwarded ports are not authenticated. Binding to a non-loopback address (e.g. `0.0.0.0`) exposes the forward to other hosts on your network, and TailSocks will log a warning when you do so.
+
 ### Authentication
 
 TailSocks will use your existing Tailscale authentication. If you're not logged in, you can provide an auth key:
@@ -160,6 +184,7 @@ Usage of tailsocks:
   -k, --authkey string               Optional Tailscale auth key (or set TS_AUTHKEY env var; if omitted, loads from disk or prompts)
   -e, --ephemeral                    Make this node ephemeral (auto-cleanup on disconnect)
   -l, --exit-node-allow-lan-access   Allow access to local LAN while using exit node
+  -t, --tcp stringArray              Forward a local TCP port to a remote host through the exit node, in the form 'LISTEN=TARGET' (e.g. '127.0.0.1:3900=test.com:3900'). Can be repeated to forward multiple ports.
   -n, --hostname string              Tailscale node name (hostname) (default "tailsocks")
       --local-dns                    Use local DNS resolver instead of resolving DNS through Tailscale
   -c, --login-server string          Optional control server URL (e.g. https://controlplane.tld for Headscale)

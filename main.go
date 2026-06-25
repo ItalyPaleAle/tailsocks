@@ -43,6 +43,12 @@ func main() {
 		kitslog.FatalError(slog.Default(), "missing --exit-node (IP like 100.x or MagicDNS base name)", errors.New("exit-node flag is required"))
 	}
 
+	// Parse TCP port-forwarding rules early so invalid input fails before we bring up the Tailscale node
+	forwards, err := ParsePortForwards(opts.TCPForwards)
+	if err != nil {
+		kitslog.FatalError(slog.Default(), "invalid --tcp port forward", err)
+	}
+
 	ctx := signals.SignalContext(context.Background())
 
 	// Setup authentication
@@ -141,6 +147,19 @@ func main() {
 	}
 	slog.Info("SOCKS5 proxy listening", "addr", "socks5://"+opts.SocksAddr)
 
+	// Start TCP port forwarders, if any
+	// Each dials its target through tsnet's embedded netstack so traffic is routed via the exit node
+	forwardListeners := make([]net.Listener, len(forwards))
+	for i, pf := range forwards {
+		fl, ferr := startPortForward(ctx, s, pf)
+		if ferr != nil {
+			kitslog.FatalError(slog.Default(), "failed to start TCP port forward", ferr)
+		}
+
+		forwardListeners[i] = fl
+		slog.Info("TCP port forward listening", "listen", pf.Listen, "target", pf.Target)
+	}
+
 	// Shutdown handling
 	doneCh := make(chan struct{})
 	go func() {
@@ -159,6 +178,9 @@ func main() {
 
 	slog.Info("Shutting down...")
 	_ = l.Close()
+	for _, fl := range forwardListeners {
+		_ = fl.Close()
+	}
 	_ = s.Close()
 }
 
