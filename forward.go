@@ -146,14 +146,14 @@ func acceptForwardConns(ctx context.Context, d dialer, l net.Listener, pf PortFo
 
 // handleForwardConn dials the target and pipes data between the accepted local connection and the remote connection
 func handleForwardConn(ctx context.Context, d dialer, local net.Conn, pf PortForward) {
-	defer local.Close()
+	defer local.Close() //nolint:errcheck
 
 	remote, err := d.Dial(ctx, "tcp", pf.Target)
 	if err != nil {
 		slog.Warn("Failed to dial target for port forward", "forward", pf.String(), "error", err)
 		return
 	}
-	defer remote.Close()
+	defer remote.Close() //nolint:errcheck
 
 	slog.Debug("Forwarding connection", "forward", pf.String(), "client", local.RemoteAddr().String())
 
