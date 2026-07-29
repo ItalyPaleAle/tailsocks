@@ -234,7 +234,7 @@ func setLogger() {
 	// Setup logger with tint handler if connected to a tty
 	var handler slog.Handler
 	if isatty.IsTerminal(os.Stderr.Fd()) || isatty.IsCygwinTerminal(os.Stderr.Fd()) {
-		handler = tint.NewHandler(os.Stderr, nil)
+		handler = tint.NewTextHandler(os.Stderr, nil)
 	} else {
 		handler = slog.NewJSONHandler(os.Stderr, nil)
 	}
