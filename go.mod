@@ -10,7 +10,7 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/net v0.56.0
-	tailscale.com v1.98.10
+	tailscale.com v1.102.0
 )
 
 require (
