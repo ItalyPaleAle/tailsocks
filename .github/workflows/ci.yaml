@@ -24,11 +24,11 @@ jobs:
       CGO_ENABLED: "0"
     steps:
 
-      - name: Check out code
-        uses: actions/checkout@v6
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
           # Use cache from golangci-lint
@@ -40,9 +40,13 @@ jobs:
           gomod-age
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
+
+      - name: Run unit tests
+        run: |
+          go test ./...
 
       - name: Build E2E binary (linux/amd64)
         run: |
@@ -52,7 +56,7 @@ jobs:
             go build -trimpath -o .bin/tailsocks-e2e ./
 
       - name: Upload E2E binary artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: tailsocks-e2e-linux-amd64
           path: .bin/tailsocks-e2e
@@ -124,10 +128,10 @@ jobs:
     steps:
 
       - name: Check out code
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download E2E binary artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: tailsocks-e2e-linux-amd64
           path: .ci-bin
