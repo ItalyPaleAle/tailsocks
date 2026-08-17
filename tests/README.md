@@ -15,6 +15,12 @@ When TCP port forwarding is enabled (the default), the script also starts the pr
 1. Forwarded IP (`curl https://api.ipify.org --connect-to <host>:443:127.0.0.1:5043`)
 2. The forwarded IP differs from the host IP and matches the proxied IP (both route through the exit node)
 
+When the HTTP proxy check is enabled (the default), the script also starts TailSocks with `--http-addr`, then verifies both of the paths an HTTP proxy can take:
+
+1. Tunneled IP (`curl https://api.ipify.org --proxy http://127.0.0.1:5041`), which goes through a `CONNECT` tunnel
+2. Forwarded IP (`curl http://api.ipify.org --proxy http://127.0.0.1:5041`), which is a request forwarded by the proxy
+3. Both differ from the host IP, and the tunneled IP matches the proxied IP (all route through the exit node)
+
 The script always runs with `--ephemeral=true` and always uses a temporary `--state-dir` that is deleted at the end.
 
 ### Required env vars
@@ -37,6 +43,10 @@ The script always runs with `--ephemeral=true` and always uses a temporary `--st
 - `E2E_TEST_TCP_FORWARD` (default: `true`; set to `false` to skip the TCP port-forwarding check)
 - `E2E_TCP_FORWARD_HOST` (default: `127.0.0.1`; local bind host for the forward)
 - `E2E_TCP_FORWARD_PORT` (default: `5043`; local bind port for the forward)
+- `E2E_TEST_HTTP_PROXY` (default: `true`; set to `false` to skip the HTTP proxy check)
+- `E2E_HTTP_HOST` (default: `127.0.0.1`; local bind host for the HTTP proxy)
+- `E2E_HTTP_PORT` (default: `5041`; local bind port for the HTTP proxy)
+- `E2E_HTTP_IP_CHECK_URL` (default: `http://<host of E2E_IP_CHECK_URL>`; plain HTTP URL used for the request-forwarding check)
 
 ### Auth mode: `authkey`
 

@@ -192,7 +192,8 @@ func TestPortForwardDialError(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	// Target points at a port that is closed; reserve one then close it
+	// Target points at a port that is closed
+	// Reserve one then close it
 	tmp, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx
 	require.NoError(t, err)
 	deadTarget := tmp.Addr().String()
