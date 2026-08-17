@@ -1,14 +1,14 @@
 # TailSocks
 
-Route traffic through any Tailscale exit node using a local SOCKS5 proxy.
+Route traffic through any Tailscale exit node using a local SOCKS5 or HTTP proxy.
 
 ## What is TailSocks?
 
-TailSocks creates a local SOCKS5 proxy server that automatically routes all traffic through a Tailscale exit node of your choice. This gives you the flexibility to:
+TailSocks creates a local SOCKS5 and/or an HTTP proxy server, automatically routing all traffic through a Tailscale exit node of your choice. This gives you the flexibility to:
 
 - **Route specific applications** through your Tailscale network without affecting your entire system
 - **Use different exit nodes** for different applications simultaneously
-- **Access your Tailnet resources** from applications that support SOCKS5 proxies
+- **Access your Tailnet resources** from applications that support SOCKS5 or HTTP proxies
 - **Bypass VPN limitations** in applications that don't support traditional VPNs
 
 ## Use Cases
@@ -47,6 +47,8 @@ docker run \
   --exit-node home-server
 ```
 
+To expose the HTTP proxy too, add `-p 127.0.0.1:5041:5041` and `--http-addr 0.0.0.0:5041`.
+
 The container's working directory is `/data`, where tsnet writes its state (`/data/tsnet-state`) by default. Mount a volume there to persist the node identity across restarts, otherwise the node re-registers each time.
 
 > TailSocks follows semver for versioning. The command above uses the latest version in the 1.x branch. We do not publish a container image tagged "latest".
@@ -84,6 +86,8 @@ go build -o tailsocks
 
 Your application traffic will now route through the specified Tailscale exit node.
 
+If your application only supports HTTP proxies, start TailSocks with `--http-addr 127.0.0.1:5041` and point it there instead. See [HTTP proxy](#http-proxy) below.
+
 ## Usage
 
 ### Basic Usage
@@ -98,6 +102,41 @@ tailsocks --exit-node home-server --socks-addr 127.0.0.1:8080
 # Allow LAN access while using the exit node
 tailsocks --exit-node home-server --exit-node-allow-lan-access
 ```
+
+### HTTP Proxy
+
+In addition to SOCKS5, TailSocks can expose an HTTP proxy, which is what tools that read the `http_proxy` and `https_proxy` environment variables expect. It's disabled by default, and you can enable it with the `--http-addr` (or `-p`) flag:
+
+```sh
+tailsocks --exit-node home-server --http-addr 127.0.0.1:5041
+```
+
+Then point your tools at it:
+
+```sh
+export http_proxy=http://127.0.0.1:5041
+export https_proxy=http://127.0.0.1:5041
+export no_proxy=localhost,127.0.0.1
+
+# Will use your exit node's IP
+curl https://api.ipify.org
+```
+
+> Note that `https_proxy` points to an `http://` URL too: HTTPS destinations are reached by opening a tunnel through the proxy with the HTTP `CONNECT` method, then negotiating TLS end-to-end with the destination. TailSocks never terminates or inspects TLS. Proxy listeners that speak TLS themselves (`https_proxy=https://…`) are not supported.
+
+Unlike SOCKS5, an HTTP proxy always resolves destination names on the proxy side, so MagicDNS names work without any extra client configuration:
+
+```sh
+curl http://internal-service.tailnet --proxy http://127.0.0.1:5041
+```
+
+Both proxies can run at the same time and share the same exit node. To run the HTTP proxy alone, disable SOCKS5 by setting its address to an empty value:
+
+```sh
+tailsocks --exit-node home-server --http-addr 127.0.0.1:5041 --socks-addr ''
+```
+
+> **Warning:** like the SOCKS5 proxy, the HTTP proxy is not authenticated. Binding it to a non-loopback address (e.g. `0.0.0.0`) exposes an open proxy to everyone who can reach that address, and TailSocks will log a warning when you do so.
 
 ### TCP Port Forwarding
 
@@ -189,7 +228,8 @@ Usage of tailsocks:
       --local-dns                    Use local DNS resolver instead of resolving DNS through Tailscale
   -c, --login-server string          Optional control server URL (e.g. https://controlplane.tld for Headscale)
   -o, --oauth2                       Use OAuth2 credentials for authentication. When set, node is ephemeral by default.
-  -a, --socks-addr string            SOCKS5 listen address (default "127.0.0.1:5040")
+  -a, --socks-addr string            SOCKS5 listen address. Set to an empty value to disable the SOCKS5 proxy. (default "127.0.0.1:5040")
+  -p, --http-addr string             HTTP proxy listen address (e.g. '127.0.0.1:5041'). Disabled when empty.
   -s, --state-dir string             Directory to store tsnet state (default "./tsnet-state")
   -v, --version                      Show version
   -h, --help                         Show this help message
@@ -206,10 +246,15 @@ Usage of tailsocks:
 3. SOCKS Host: `127.0.0.1`, Port: `5040`
 4. Select "SOCKS v5"
 
+To use the HTTP proxy instead, fill in "HTTP Proxy" with `127.0.0.1` and port `5041`, then select "Also use this proxy for HTTPS".
+
 **Chrome/Chromium:**
 
 ```sh
 chrome --proxy-server="socks5://127.0.0.1:5040"
+
+# Or, using the HTTP proxy
+chrome --proxy-server="http://127.0.0.1:5041"
 ```
 
 ### Command-Line Tools
@@ -221,16 +266,30 @@ Many CLI tools support SOCKS5 proxies via environment variables:
 curl https://api.ipify.org --proxy socks5://127.0.0.1:5040
 ```
 
+Tools that only understand HTTP proxies can use the `http_proxy` and `https_proxy` environment variables, which many CLIs honor without any per-tool configuration:
+
+```sh
+export http_proxy=http://127.0.0.1:5041
+export https_proxy=http://127.0.0.1:5041
+export no_proxy=localhost,127.0.0.1
+```
+
 **Git:**
 
 ```sh
 git config --global http.proxy socks5://127.0.0.1:5040
+
+# Or, using the HTTP proxy
+git config --global http.proxy http://127.0.0.1:5041
 ```
 
 **SSH:**
 
 ```sh
 ssh -o ProxyCommand="nc -X 5 -x 127.0.0.1:5040 %h %p" user@host
+
+# Or, using the HTTP proxy
+ssh -o ProxyCommand="nc -X connect -x 127.0.0.1:5041 %h %p" user@host
 ```
 
 ## Examples
@@ -277,14 +336,14 @@ tailsocks --exit-node office --socks-addr 127.0.0.1:5041 --state-dir ./state-off
 
 **Traffic not routing through exit node:**
 
-- Confirm your application is properly configured to use the SOCKS5 proxy
-- Check that the SOCKS5 address and port match TailSocks' listen address
+- Confirm your application is properly configured to use the SOCKS5 or HTTP proxy
+- Check that the proxy address and port match TailSocks' listen address
 - Verify the exit node is online and accessible
 - Check Tailscale ACL to ensure that your node can use the exit node (destination name is `autogroup:internet`)
 
 **Tailscale Magic DNS isn't working:**
 
-- Ensure that you have configured your application to use the DNS resolver over the SOCKS5 proxy. For example, curl requires the use of `socks5h://` as protocol
+- Ensure that you have configured your application to use the DNS resolver over the SOCKS5 proxy. For example, curl requires the use of `socks5h://` as protocol. This does not apply to the HTTP proxy, which always resolves names on the TailSocks side
 - Ensure that Magic DNS is enabled in your Tailnet
 - Ensure that Tailsocks is not running with the `--local-dns` flag
 

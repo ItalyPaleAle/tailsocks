@@ -43,7 +43,8 @@ func (c *OAuth2Credentials) GetAuthToken(ctx context.Context, ephemeral bool) (s
 }
 
 func (c *OAuth2Credentials) prepareTag() error {
-	// Tailscale ACL tags are case-insensitive; normalize so "Tag:foo" doesn't become "tag:Tag:foo"
+	// Tailscale ACL tags are case-insensitive
+	// Normalize so "Tag:foo" doesn't become "tag:Tag:foo"
 	tag := strings.ToLower(strings.TrimSpace(c.Tag))
 	if tag == "" {
 		return errors.New("tag is required")

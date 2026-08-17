@@ -13,6 +13,7 @@ import (
 // Options holds all CLI flag values
 type Options struct {
 	SocksAddr   string
+	HTTPAddr    string
 	StateDir    string
 	Hostname    string
 	AuthKey     string
@@ -32,7 +33,8 @@ func ParseFlags() (*Options, error) {
 	cfg := &Options{}
 	var ephemeral bool
 
-	pflag.StringVarP(&cfg.SocksAddr, "socks-addr", "a", "127.0.0.1:5040", "SOCKS5 listen address")
+	pflag.StringVarP(&cfg.SocksAddr, "socks-addr", "a", "127.0.0.1:5040", "SOCKS5 listen address. Set to an empty value to disable the SOCKS5 proxy.")
+	pflag.StringVarP(&cfg.HTTPAddr, "http-addr", "p", "", "HTTP proxy listen address (e.g. '127.0.0.1:5041'). Disabled when empty.")
 	pflag.StringVarP(&cfg.StateDir, "state-dir", "s", "./tsnet-state", "Directory to store tsnet state")
 	pflag.StringVarP(&cfg.Hostname, "hostname", "n", "tailsocks", "Tailscale node name (hostname)")
 	pflag.StringVarP(&cfg.AuthKey, "authkey", "k", "", "Optional Tailscale auth key (or set TS_AUTHKEY env var; if omitted, loads from disk or prompts)")
@@ -56,9 +58,17 @@ func ParseFlags() (*Options, error) {
 		cfg.Ephemeral = &ephemeral
 	}
 
-	// --oauth2 takes its auth from OAuth2 credentials; a passed --authkey would be silently ignored
+	// --oauth2 takes its auth from OAuth2 credentials
+	// A passed --authkey would be silently ignored
 	if cfg.OAuth2 && strings.TrimSpace(cfg.AuthKey) != "" {
 		return nil, errors.New("--authkey cannot be used together with --oauth2")
+	}
+
+	// Either proxy can be turned off, but disabling both would leave nothing listening
+	cfg.SocksAddr = strings.TrimSpace(cfg.SocksAddr)
+	cfg.HTTPAddr = strings.TrimSpace(cfg.HTTPAddr)
+	if cfg.SocksAddr == "" && cfg.HTTPAddr == "" {
+		return nil, errors.New("at least one of --socks-addr and --http-addr must be set")
 	}
 
 	return cfg, nil

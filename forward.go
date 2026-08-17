@@ -24,7 +24,7 @@ func (pf PortForward) String() string {
 	return pf.Listen + "=>" + pf.Target
 }
 
-// dialer abstracts the part of *tsnet.Server used to dial the target host
+// dialer abstracts how a connection to a target host is established, which in production is always tailnetDialer
 // It is meant for testing without a real Tailscale tunnel
 type dialer interface {
 	Dial(ctx context.Context, network, addr string) (net.Conn, error)
@@ -117,7 +117,7 @@ func startPortForward(ctx context.Context, d dialer, pf PortForward) (net.Listen
 	}
 
 	// Logs a warning when a forward listens on a non-loopback address
-	warnIfNonLoopbackListenAddr(pf)
+	warnIfNonLoopbackAddr("TCP port forward", pf.Listen)
 
 	// Accept the connections and forward traffic
 	go acceptForwardConns(ctx, d, l, pf)
@@ -157,7 +157,12 @@ func handleForwardConn(ctx context.Context, d dialer, local net.Conn, pf PortFor
 
 	slog.Debug("Forwarding connection", "forward", pf.String(), "client", local.RemoteAddr().String())
 
-	// Copy in both directions and return when either side is done
+	pipeConn(local, remote)
+}
+
+// pipeConn copies data in both directions between two connections and returns once both directions are done
+// It is shared by the TCP port forwards and by the HTTP proxy's CONNECT tunnels
+func pipeConn(a net.Conn, b net.Conn) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
@@ -174,34 +179,8 @@ func handleForwardConn(ctx context.Context, d dialer, local net.Conn, pf PortFor
 		}
 	}
 
-	go copyAndClose(remote, local)
-	go copyAndClose(local, remote)
+	go copyAndClose(a, b)
+	go copyAndClose(b, a)
 
 	wg.Wait()
-}
-
-// warnIfNonLoopbackListenAddr logs a warning when a forward listens on a non-loopback address, since the forwarded port is unauthenticated
-func warnIfNonLoopbackListenAddr(pf PortForward) {
-	host, _, err := net.SplitHostPort(pf.Listen)
-	if err != nil {
-		slog.Warn("Could not determine port forward bind address security", "forward", pf.String(), "error", err)
-		return
-	}
-
-	if host == "" {
-		slog.Warn("Port forward is listening on all interfaces without authentication", "forward", pf.String())
-		return
-	}
-
-	ip := net.ParseIP(host)
-	if ip != nil {
-		if !ip.IsLoopback() {
-			slog.Warn("Port forward is listening on a non-loopback address without authentication", "forward", pf.String())
-		}
-		return
-	}
-
-	if host != "localhost" {
-		slog.Warn("Port forward is listening on a non-loopback hostname without authentication", "forward", pf.String(), "host", host)
-	}
 }

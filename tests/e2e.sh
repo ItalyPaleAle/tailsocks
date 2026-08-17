@@ -20,6 +20,10 @@ HOSTNAME="${E2E_HOSTNAME:-tailsocks-e2e-$(date +%s)}"
 TEST_TCP_FORWARD="${E2E_TEST_TCP_FORWARD:-true}"
 TCP_FORWARD_HOST="${E2E_TCP_FORWARD_HOST:-127.0.0.1}"
 TCP_FORWARD_PORT="${E2E_TCP_FORWARD_PORT:-5043}"
+TEST_HTTP_PROXY="${E2E_TEST_HTTP_PROXY:-true}"
+HTTP_HOST="${E2E_HTTP_HOST:-127.0.0.1}"
+HTTP_PORT="${E2E_HTTP_PORT:-5041}"
+HTTP_ADDR="${HTTP_HOST}:${HTTP_PORT}"
 
 # Derive the target host and port from the IP check URL so the TCP forward
 # points at the same service used for the SOCKS5 check.
@@ -32,6 +36,10 @@ else
   TARGET_PORT="443"
 fi
 TCP_FORWARD_ADDR="${TCP_FORWARD_HOST}:${TCP_FORWARD_PORT}"
+
+# Plain HTTP URL used to exercise the HTTP proxy's request-forwarding path, as
+# opposed to the CONNECT tunnel that every https:// destination goes through.
+HTTP_IP_CHECK_URL="${E2E_HTTP_IP_CHECK_URL:-http://${TARGET_HOST}}"
 
 if [[ -z "${EXIT_NODE}" ]]; then
   echo "E2E_EXIT_NODE is required" >&2
@@ -113,6 +121,10 @@ if [[ "${TEST_TCP_FORWARD}" == "true" ]]; then
   run_cmd+=(--tcp "${TCP_FORWARD_ADDR}=${TARGET_HOST}:${TARGET_PORT}")
 fi
 
+if [[ "${TEST_HTTP_PROXY}" == "true" ]]; then
+  run_cmd+=(--http-addr "${HTTP_ADDR}")
+fi
+
 case "${AUTH_MODE}" in
   authkey)
     AUTHKEY="${E2E_TS_AUTHKEY:-${TS_AUTHKEY:-${TS_AUTH_KEY:-}}}"
@@ -158,7 +170,12 @@ if [[ -n "${LOGIN_SERVER}" ]]; then
   run_cmd+=(--login-server "${LOGIN_SERVER}")
 fi
 
-echo "Starting tailsocks (${TAILSOCKS_LAUNCHER_DESC}) with SOCKS5 on ${SOCKS_ADDR}"
+start_desc="SOCKS5 on ${SOCKS_ADDR}"
+if [[ "${TEST_HTTP_PROXY}" == "true" ]]; then
+  start_desc+=" and HTTP on ${HTTP_ADDR}"
+fi
+
+echo "Starting tailsocks (${TAILSOCKS_LAUNCHER_DESC}) with ${start_desc}"
 
 (
   cd "${REPO_ROOT}"
@@ -259,4 +276,54 @@ if [[ "${TEST_TCP_FORWARD}" == "true" ]]; then
   fi
 
   echo "PASS: TCP forward routes through the exit node"
+fi
+
+if [[ "${TEST_HTTP_PROXY}" == "true" ]]; then
+  echo "Testing HTTP proxy on ${HTTP_ADDR}..."
+
+  # An https:// destination is reached through the proxy's CONNECT tunnel
+  HTTP_PROXY_IP=""
+  deadline=$((SECONDS + WAIT_TIMEOUT_SEC))
+  while (( SECONDS < deadline )); do
+    if ! kill -0 "${TAILSOCKS_PID}" 2>/dev/null; then
+      fail "tailsocks process exited before the HTTP proxy became ready"
+    fi
+
+    if HTTP_PROXY_IP="$(curl --fail --silent --show-error --max-time 10 --proxy "http://${HTTP_ADDR}" "${IP_CHECK_URL}" 2>/dev/null)"; then
+      if [[ -n "${HTTP_PROXY_IP}" ]]; then
+        break
+      fi
+    fi
+
+    sleep "${WAIT_INTERVAL_SEC}"
+  done
+
+  if [[ -z "${HTTP_PROXY_IP}" ]]; then
+    fail "timed out reaching ${IP_CHECK_URL} through the HTTP proxy at ${HTTP_ADDR}"
+  fi
+
+  echo "HTTP proxy IP (CONNECT tunnel): ${HTTP_PROXY_IP}"
+
+  if [[ "${HOST_IP}" == "${HTTP_PROXY_IP}" ]]; then
+    fail "expected different IP when routing through the HTTP proxy, but both were '${HOST_IP}'"
+  fi
+
+  if [[ "${PROXY_IP}" != "${HTTP_PROXY_IP}" ]]; then
+    fail "expected HTTP proxy IP ('${HTTP_PROXY_IP}') to match SOCKS5 proxied IP ('${PROXY_IP}'), since both route through the exit node"
+  fi
+
+  # A plain http:// destination takes the request-forwarding path instead of a tunnel
+  PLAIN_HTTP_IP="$(curl --fail --silent --show-error --max-time 20 --proxy "http://${HTTP_ADDR}" "${HTTP_IP_CHECK_URL}" 2>/dev/null || true)"
+
+  if [[ -z "${PLAIN_HTTP_IP}" ]]; then
+    fail "failed to reach ${HTTP_IP_CHECK_URL} through the HTTP proxy at ${HTTP_ADDR}"
+  fi
+
+  echo "HTTP proxy IP (forwarded request): ${PLAIN_HTTP_IP}"
+
+  if [[ "${HOST_IP}" == "${PLAIN_HTTP_IP}" ]]; then
+    fail "expected different IP when forwarding a plain HTTP request through the proxy, but both were '${HOST_IP}'"
+  fi
+
+  echo "PASS: HTTP proxy routes through the exit node"
 fi

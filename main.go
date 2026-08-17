@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"strings"
 
@@ -111,47 +112,63 @@ func main() {
 	}
 	slog.Info("Configured exit node", "exitNode", opts.ExitNode, "allowLanAccess", opts.AllowLAN)
 
-	// Configure the SOCKS5 server
-	socksConfig := &socks5.Config{
-		// SOCKS5 server that dials via tsnet's embedded netstack
-		Dial: func(dialCtx context.Context, network, addr string) (net.Conn, error) {
-			// go-socks5 provides addr as host:port (host may be a DNS name).
-			return s.Dial(dialCtx, network, addr)
-		},
-		Logger: slog.NewLogLogger(
-			slog.Default().With(slog.String("scope", "socks")).Handler(),
-			slog.LevelInfo,
-		),
-	}
-
-	// Use Tailscale DNS resolver by default, unless --local-dns is set
-	if !opts.LocalDNS {
-		socksConfig.Resolver = NewTailscaleResolver(lc, st.CurrentTailnet.MagicDNSSuffix)
-		magicDNSEnabled := st.CurrentTailnet != nil && st.CurrentTailnet.MagicDNSEnabled
-		slog.Info("Using Tailscale DNS resolver", "magicDNSEnabled", magicDNSEnabled)
-	} else {
+	// Select the resolver used for every outbound connection
+	// Resolving in a single place keeps DNS behavior identical for the SOCKS5 proxy, the HTTP proxy, and the TCP port forwards
+	var resolver socks5.NameResolver
+	if opts.LocalDNS {
+		resolver = socks5.DNSResolver{}
 		slog.Info("Using local DNS resolver")
+	} else {
+		// CurrentTailnet is unset when the node isn't fully configured yet, in which case there's no MagicDNS suffix to expand short names with
+		var (
+			magicDNSSuffix  string
+			magicDNSEnabled bool
+		)
+		if st.CurrentTailnet != nil {
+			magicDNSSuffix = st.CurrentTailnet.MagicDNSSuffix
+			magicDNSEnabled = st.CurrentTailnet.MagicDNSEnabled
+		}
+
+		resolver = NewTailscaleResolver(lc, magicDNSSuffix)
+		slog.Info("Using Tailscale DNS resolver", "magicDNSEnabled", magicDNSEnabled)
 	}
 
-	warnIfNonLoopbackSocksAddr(opts.SocksAddr)
+	tsDialer := newTailnetDialer(s, resolver)
 
-	socksServer, err := socks5.New(socksConfig)
-	if err != nil {
-		kitslog.FatalError(slog.Default(), "error creating socks5 server", err)
+	// Start the SOCKS5 proxy, unless it's disabled
+	// ParseFlags guarantees at least one of the two proxies is enabled
+	var (
+		socksListener net.Listener
+		socksDone     <-chan struct{}
+	)
+	if opts.SocksAddr != "" {
+		warnIfNonLoopbackAddr("SOCKS5 proxy", opts.SocksAddr)
+
+		socksListener, socksDone, err = startSocksProxy(ctx, tsDialer, resolver, opts.SocksAddr)
+		if err != nil {
+			kitslog.FatalError(slog.Default(), "failed to start SOCKS5 proxy", err)
+		}
+		slog.Info("SOCKS5 proxy listening", "addr", "socks5://"+socksListener.Addr().String())
 	}
 
-	nlc := net.ListenConfig{}
-	l, err := nlc.Listen(ctx, "tcp", opts.SocksAddr)
-	if err != nil {
-		kitslog.FatalError(slog.Default(), "listen SOCKS failed", err)
+	// Start the HTTP proxy, if enabled
+	var httpServer *http.Server
+	if opts.HTTPAddr != "" {
+		warnIfNonLoopbackAddr("HTTP proxy", opts.HTTPAddr)
+
+		var httpAddr net.Addr
+		httpServer, httpAddr, err = startHTTPProxy(ctx, tsDialer, opts.HTTPAddr)
+		if err != nil {
+			kitslog.FatalError(slog.Default(), "failed to start HTTP proxy", err)
+		}
+		slog.Info("HTTP proxy listening", "addr", "http://"+httpAddr.String())
 	}
-	slog.Info("SOCKS5 proxy listening", "addr", "socks5://"+opts.SocksAddr)
 
 	// Start TCP port forwarders, if any
 	// Each dials its target through tsnet's embedded netstack so traffic is routed via the exit node
 	forwardListeners := make([]net.Listener, len(forwards))
 	for i, pf := range forwards {
-		fl, ferr := startPortForward(ctx, s, pf)
+		fl, ferr := startPortForward(ctx, tsDialer, pf)
 		if ferr != nil {
 			kitslog.FatalError(slog.Default(), "failed to start TCP port forward", ferr)
 		}
@@ -160,24 +177,20 @@ func main() {
 		slog.Info("TCP port forward listening", "listen", pf.Listen, "target", pf.Target)
 	}
 
-	// Shutdown handling
-	doneCh := make(chan struct{})
-	go func() {
-		err = socksServer.Serve(l)
-		if err != nil {
-			slog.Warn("SOCKS server stopped", "error", err)
-		}
-		close(doneCh)
-	}()
-
-	// Wait until either the context is canceled, or the server has returned
+	// Wait until either the context is canceled, or the SOCKS5 server has stopped serving
+	// When the SOCKS5 proxy is disabled socksDone is nil, and receiving from a nil channel blocks forever, so the context becomes the only way out
 	select {
 	case <-ctx.Done():
-	case <-doneCh:
+	case <-socksDone:
 	}
 
 	slog.Info("Shutting down...")
-	_ = l.Close()
+	if socksListener != nil {
+		_ = socksListener.Close()
+	}
+	if httpServer != nil {
+		stopHTTPProxy(httpServer)
+	}
 	for _, fl := range forwardListeners {
 		_ = fl.Close()
 	}
@@ -242,15 +255,16 @@ func setLogger() {
 	slog.SetDefault(logger)
 }
 
-func warnIfNonLoopbackSocksAddr(addr string) {
+// warnIfNonLoopbackAddr logs a warning when a listener binds outside of loopback, since nothing TailSocks exposes is authenticated
+func warnIfNonLoopbackAddr(kind string, addr string) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
-		slog.Warn("Could not determine SOCKS5 bind address security", "addr", addr, "error", err)
+		slog.Warn(kind+" could not determine bind address security", "addr", addr, "error", err)
 		return
 	}
 
 	if host == "" {
-		slog.Warn("SOCKS5 proxy is listening on all interfaces without authentication", "addr", addr)
+		slog.Warn(kind+" listening on all interfaces without authentication", "addr", addr)
 		return
 	}
 
@@ -258,14 +272,14 @@ func warnIfNonLoopbackSocksAddr(addr string) {
 	if ip != nil {
 		if !ip.IsLoopback() {
 			// Show a warning
-			slog.Warn("SOCKS5 proxy is listening on a non-loopback address without authentication", "addr", addr)
+			slog.Warn(kind+" listening on a non-loopback address without authentication", "addr", addr)
 		}
 		return
 	}
 
 	if host != "localhost" {
 		// Show a warning
-		slog.Warn("SOCKS5 proxy is listening on a non-loopback hostname without authentication", "addr", addr, "host", host)
+		slog.Warn(kind+" listening on a non-loopback hostname without authentication", "addr", addr, "host", host)
 	}
 }
 
