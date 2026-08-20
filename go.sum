@@ -258,5 +258,5 @@ k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3 h1:jVkFFVfXdXP74B/zbO3hM3hpSFD0x
 k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3/go.mod h1:M2s5JB1lIYP3jzZdorPLHXIPJzt9vv2muW5a6L9DtNM=
 software.sslmate.com/src/go-pkcs12 v0.4.0 h1:H2g08FrTvSFKUj+D309j1DPfk5APnIdAQAB8aEykJ5k=
 software.sslmate.com/src/go-pkcs12 v0.4.0/go.mod h1:Qiz0EyvDRJjjxGyUQa2cCNZn/wMyzrRJ/qcDXOQazLI=
-tailscale.com v1.102.2 h1:K0TJMOFv0F9aJDSjM/C2uVtrwnLn+ek22c42x61FXeA=
-tailscale.com v1.102.2/go.mod h1:ynxKzc9hDxwGLHORQE0qrTH1b8NBRrIsXcnfnug/3dg=
+tailscale.com v1.102.3 h1:M1czCAtMuIcg+2Z+FBPbJyAk3ZEQGEFKnvHthtE1c6M=
+tailscale.com v1.102.3/go.mod h1:47bv91Xbg4K1p5wti7F1dmKvUVWV5BXF78d9EWJ+d6c=

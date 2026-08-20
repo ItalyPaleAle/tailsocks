@@ -1,6 +1,6 @@
 module github.com/italypaleale/tailsocks
 
-go 1.26.5
+go 1.26.6
 
 tool github.com/fchimpan/gomod-age
 
@@ -12,7 +12,7 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/net v0.58.0
-	tailscale.com v1.102.2
+	tailscale.com v1.102.3
 )
 
 require (
