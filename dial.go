@@ -8,25 +8,25 @@ import (
 	"github.com/armon/go-socks5"
 )
 
-// tailnetDialer dials connections through tsnet's embedded netstack, so traffic is routed via the configured exit node
-// Names are resolved with the resolver selected at startup, before the address is handed to tsnet
-// Resolving here rather than inside tsnet keeps DNS behavior identical for every consumer: the SOCKS5 server, the HTTP proxy, and the TCP port forwards all honor MagicDNS and --local-dns the same way
-type tailnetDialer struct {
-	// In production this is always a *tsnet.Server, whose Dial method matches the dialer interface
+// tunnelDialer resolves a name and then dials the result through whichever tunnel the process was started with
+// In tailnet mode the tunnel is tsnet's embedded netstack, which routes via the configured exit node; in tailcat mode it is a tailcat client, whose server does the forwarding
+// Resolving here rather than inside the tunnel keeps DNS behavior identical for every consumer: the SOCKS5 server, the HTTP proxy, and the TCP port forwards all honor the selected resolver the same way
+type tunnelDialer struct {
+	// A *tsnet.Server in tailnet mode, a *tailcatTunnel in tailcat mode
 	ts       dialer
 	resolver socks5.NameResolver
 }
 
-// newTailnetDialer creates a dialer that resolves names with resolver and dials through ts
-func newTailnetDialer(ts dialer, resolver socks5.NameResolver) *tailnetDialer {
-	return &tailnetDialer{
+// newTunnelDialer creates a dialer that resolves names with resolver and dials through ts
+func newTunnelDialer(ts dialer, resolver socks5.NameResolver) *tunnelDialer {
+	return &tunnelDialer{
 		ts:       ts,
 		resolver: resolver,
 	}
 }
 
-// Dial resolves the host part of addr when it isn't already an IP, then dials it through the tailnet
-func (d *tailnetDialer) Dial(ctx context.Context, network string, addr string) (net.Conn, error) {
+// Dial resolves the host part of addr when it isn't already an IP, then dials it through the tunnel
+func (d *tunnelDialer) Dial(ctx context.Context, network string, addr string) (net.Conn, error) {
 	// addr must be in "host:port" form
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {

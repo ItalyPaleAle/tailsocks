@@ -10,6 +10,7 @@ TailSocks creates a local SOCKS5 and/or an HTTP proxy server, automatically rout
 - **Use different exit nodes** for different applications simultaneously
 - **Access your Tailnet resources** from applications that support SOCKS5 or HTTP proxies
 - **Bypass VPN limitations** in applications that don't support traditional VPNs
+- **Skip the tailnet entirely** by connecting to a [tailcat](https://github.com/tailscale/tailcat) server instead, with no Tailscale account required
 
 ## Use Cases
 
@@ -215,24 +216,146 @@ If you're using Headscale or another custom control server:
 tailsocks --exit-node home-server --login-server https://headscale.example.com
 ```
 
+## Running without a tailnet (tailcat)
+
+TailSocks can also route traffic through a [tailcat](https://github.com/tailscale/tailcat) server instead of joining a tailnet. Tailscale's data plane (WireGuard over DERP) does the work, but there is no control plane involved: no Tailscale account, no auth key, no node registration. The tailcat server *is* the exit node.
+
+> **Experimental.** tailcat makes no stability promises about its Go API, its CLI, or its wire format, so this mode may need breaking changes to keep up. Joining a tailnet remains the default and the supported path.
+
+### On the server
+
+Start tailcat as an exit node on the machine you want traffic to come out of, and restrict it to the client that will use it:
+
+```sh
+# Print the client's public key by starting TailSocks once (see below), then:
+tailcat --serve=exit-node --allow=nodekey:cfb6bf...ddfd16
+```
+
+tailcat prints a connection token to stdout. That token is all a client needs.
+
+> **Warning:** a tailcat exit node forwards TCP to *any* destination a client asks for, including its own LAN and its loopback interface. The token is a bearer credential: anyone holding it gets an unauthenticated route into that network. Always pass `--allow` with the public keys you intend to serve. There is no equivalent of Tailscale ACLs here.
+
+### On the client
+
+```sh
+tailsocks --tailcat tc0oFwWCAOtDhylzp4vlxCiTg8bka4p7BGTkDR...
+```
+
+TailSocks logs the public key it presents on startup, which is what goes into the server's `--allow`:
+
+```text
+level=INFO msg="Connecting to tailcat server" clientPublicKey=nodekey:cfb6bf...ddfd16 keyFile=./tsnet-state/tailcat-key.json
+```
+
+The SOCKS5 proxy, the HTTP proxy, and `--tcp` port forwards all work exactly as they do in tailnet mode.
+
+### Passing the token
+
+The token is a bearer credential, and command-line arguments are readable by other users on most systems. `--tailcat` accepts four forms:
+
+```sh
+# The token itself
+tailsocks --tailcat tc0oFwWCAOtDhylz...
+
+# A file holding it
+tailsocks --tailcat @/etc/tailsocks/token
+
+# The TAILSOCKS_TAILCAT_TOKEN environment variable
+TAILSOCKS_TAILCAT_TOKEN=tc0oFwWCAOtDhylz... tailsocks --tailcat -
+
+# A DNS name whose "tailcat=" TXT record holds it, the same convention tailcat's own CLI uses
+tailsocks --tailcat exit.example.com
+```
+
+### Client identity
+
+The server's `--allow` list is keyed on the client's public key, so TailSocks persists a private key and reuses it across restarts. By default it lives at `tailcat-key.json` inside `--state-dir`, and it is created on first run.
+
+```sh
+# Keep it somewhere specific
+tailsocks --tailcat @/etc/tailsocks/token --tailcat-key /etc/tailsocks/client.private.json
+
+# Or use a throwaway identity, which the server has to allow anew every time
+tailsocks --tailcat @/etc/tailsocks/token --tailcat-key new
+```
+
+The file format matches tailcat's own key files, so an existing one can be used directly:
+
+```sh
+tailcat genkey --client
+tailsocks --tailcat @/etc/tailsocks/token --tailcat-key ~/.config/tailcat/keys/client-default.private.json
+```
+
+### DNS
+
+There is no MagicDNS without a control plane, so names are resolved by querying a DNS server *through the tunnel*, over TCP. The lookup happens on the exit node's side of the connection, which is what keeps hostnames off your local network and lets CDNs answer for the exit node's location rather than yours.
+
+```sh
+# Default
+tailsocks --tailcat @/etc/tailsocks/token --tailcat-dns 1.1.1.1:53
+
+# Use the exit node's own resolver, reached through its loopback interface
+tailsocks --tailcat @/etc/tailsocks/token --tailcat-dns 127.0.0.53:53
+
+# Use a resolver on the exit node's LAN, which also resolves its private names
+tailsocks --tailcat @/etc/tailsocks/token --tailcat-dns 192.168.1.1:53
+
+# Or resolve locally instead, which leaks every hostname to your own network
+tailsocks --tailcat @/etc/tailsocks/token --local-dns
+```
+
+`--tailcat-dns` takes an `ip:port` pair rather than a name, since resolving it would require a resolver to already be working.
+
+### Differences from tailnet mode
+
+| | Tailnet mode | tailcat mode |
+| --- | --- | --- |
+| SOCKS5, HTTP proxy, `--tcp` forwards | Yes | Yes |
+| Setup | Tailscale account, auth key or OAuth2 | A token |
+| Choosing an exit node | `--exit-node`, any node in the tailnet | Implicit: the server the token points at |
+| MagicDNS and short names | Yes | No control plane, so no MagicDNS |
+| Remote DNS | Tailnet DNS | DNS over TCP through the tunnel |
+| Reaching other peers | The whole tailnet | Only the server, and whatever it forwards to |
+| Access control | Tailnet ACLs, device approval, tailnet lock | The server's `--allow` list |
+| LAN access on the exit node | `--exit-node-allow-lan-access` | Always on, not configurable |
+| UDP | Not supported | Not supported |
+
+The tailnet-only flags (`--exit-node`, `--authkey`, `--oauth2`, `--login-server`, `--ephemeral`, `--hostname`, `--exit-node-allow-lan-access`) are rejected in tailcat mode rather than silently ignored, and the tailcat-only flags are rejected outside it.
+
+### Custom DERP
+
+The client reaches the server through a DERP relay, then upgrades to a direct path where the network allows it. To use your own relays instead of Tailscale's public ones, point both sides at your own DERP map:
+
+```sh
+# Server
+tailcat --serve=exit-node --derpmap-url https://derp.example.com/derpmap.json
+
+# Client
+tailsocks --tailcat @/etc/tailsocks/token --tailcat-derpmap-url https://derp.example.com/derpmap.json
+```
+
 ## Command-Line Options
 
 ```text
 Usage of tailsocks:
-  -x, --exit-node string             Exit node selector: IP or MagicDNS base name (e.g. 'home-exit'). Required.
   -k, --authkey string               Optional Tailscale auth key (or set TS_AUTHKEY env var; if omitted, loads from disk or prompts)
   -e, --ephemeral                    Make this node ephemeral (auto-cleanup on disconnect)
+  -x, --exit-node string             Exit node selector: IP or MagicDNS base name (e.g. 'home-exit'). Required unless --tailcat is set.
   -l, --exit-node-allow-lan-access   Allow access to local LAN while using exit node
-  -t, --tcp stringArray              Forward a local TCP port to a remote host through the exit node, in the form 'LISTEN=TARGET' (e.g. '127.0.0.1:3900=test.com:3900'). Can be repeated to forward multiple ports.
+  -h, --help                         Show this help message
   -n, --hostname string              Tailscale node name (hostname) (default "tailsocks")
-      --local-dns                    Use local DNS resolver instead of resolving DNS through Tailscale
+  -p, --http-addr string             HTTP proxy listen address (e.g. '127.0.0.1:5041'). Disabled when empty.
+      --local-dns                    Use local DNS resolver instead of resolving DNS through the tunnel
   -c, --login-server string          Optional control server URL (e.g. https://controlplane.tld for Headscale)
   -o, --oauth2                       Use OAuth2 credentials for authentication. When set, node is ephemeral by default.
   -a, --socks-addr string            SOCKS5 listen address. Set to an empty value to disable the SOCKS5 proxy. (default "127.0.0.1:5040")
-  -p, --http-addr string             HTTP proxy listen address (e.g. '127.0.0.1:5041'). Disabled when empty.
-  -s, --state-dir string             Directory to store tsnet state (default "./tsnet-state")
+  -s, --state-dir string             Directory to store tsnet state, or the tailcat client identity in tailcat mode (default "./tsnet-state")
+      --tailcat string               Connect through a tailcat server instead of joining a tailnet. Accepts a token, a DNS name whose "tailcat=" TXT record holds one, '@path/to/file', or '-' to read the TAILSOCKS_TAILCAT_TOKEN environment variable.
+      --tailcat-derpmap-url string   URL of the DERP map used to reach the tailcat server. Defaults to tailcat's own.
+      --tailcat-dns string           DNS server to query through the tailcat tunnel, as 'ip:port', so names resolve on the exit node's side. Ignored when --local-dns is set. (default "1.1.1.1:53")
+      --tailcat-key string           Path to the tailcat client identity, which the server allowlists with --allow. Defaults to 'tailcat-key.json' inside --state-dir, created on first run. Use 'new' for a throwaway key.
+  -t, --tcp strings                  Forward a local TCP port to a remote host through the exit node, in the form 'LISTEN=TARGET' (e.g. '127.0.0.1:3900=test.com:3900'). Can be repeated to forward multiple ports.
   -v, --version                      Show version
-  -h, --help                         Show this help message
 ```
 
 ## Configuring Applications
@@ -349,7 +472,18 @@ tailsocks --exit-node office --socks-addr 127.0.0.1:5041 --state-dir ./state-off
 
 **Can't access LAN resources:**
 
-- Use the `--exit-node-allow-lan-access` flag
+- Use the `--exit-node-allow-lan-access` flag. In tailcat mode the exit node always reaches its own LAN, so there is nothing to enable
+
+**tailcat handshake times out:**
+
+- If the server runs with `--allow`, check that the `clientPublicKey` TailSocks logs on startup is on its list. A server ignores clients it does not allow, so the failure looks like a timeout rather than a rejection
+- Check that the token is current: a server started without `--key` generates a new identity on every run, which invalidates the previous token. Use `tailcat genkey` on the server for a stable one
+- Both sides need to reach the same DERP relay. If either is behind a strict egress filter, allow outbound HTTPS to the relays in the DERP map
+
+**Names don't resolve in tailcat mode:**
+
+- The DNS server given to `--tailcat-dns` has to be reachable *from the exit node* and has to answer over TCP. Most resolvers do, but some LAN devices only listen on UDP
+- Try `--local-dns` to confirm the tunnel itself is working, then fix the resolver separately
 
 ## License
 

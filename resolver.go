@@ -115,7 +115,7 @@ func (r *TailscaleResolver) Resolve(ctx context.Context, name string) (context.C
 // - Uses tailscaled LocalAPI (QueryDNS), so it supports MagicDNS/split DNS
 func (r *TailscaleResolver) resolveDNS(ctx context.Context, name string, qt string) ([]netip.Addr, time.Duration, error) {
 	isShort := !strings.Contains(name, ".")
-	baseQname := r.ensureTrailingDot(name)
+	baseQname := ensureTrailingDot(name)
 
 	res, _, err := r.lc.QueryDNS(ctx, baseQname, qt)
 	if err != nil {
@@ -130,14 +130,14 @@ func (r *TailscaleResolver) resolveDNS(ctx context.Context, name string, qt stri
 		if err != nil {
 			return nil, 0, fmt.Errorf("QueryDNS(%q, %s): %w", expanded, qt, err)
 		}
-		addrs, ttl, err := r.parseAandAAAA(res2)
+		addrs, ttl, err := parseAandAAAA(res2)
 		if err != nil {
 			return nil, 0, fmt.Errorf("parse %s response (expanded): %w", qt, err)
 		}
 		return addrs, ttl, nil
 	}
 
-	addrs, ttl, err := r.parseAandAAAA(res)
+	addrs, ttl, err := parseAandAAAA(res)
 	if err != nil {
 		return nil, 0, fmt.Errorf("parse %s response: %w", qt, err)
 	}
@@ -156,7 +156,8 @@ func clampCacheTTL(ttl time.Duration) time.Duration {
 	return ttl
 }
 
-func (r *TailscaleResolver) ensureTrailingDot(s string) string {
+// ensureTrailingDot turns a name into a fully qualified one, which is what the DNS wire format expects
+func ensureTrailingDot(s string) string {
 	if s == "" {
 		return "."
 	}
@@ -171,9 +172,9 @@ func (r *TailscaleResolver) expandWithSuffix(shortName, suffix string) string {
 	suffix = strings.TrimSpace(suffix)
 	suffix = strings.TrimSuffix(suffix, ".")
 	if suffix == "" {
-		return r.ensureTrailingDot(shortName)
+		return ensureTrailingDot(shortName)
 	}
-	return r.ensureTrailingDot(shortName + "." + suffix)
+	return ensureTrailingDot(shortName + "." + suffix)
 }
 
 func (r *TailscaleResolver) isNXDOMAIN(resp []byte) bool {
@@ -185,7 +186,9 @@ func (r *TailscaleResolver) isNXDOMAIN(resp []byte) bool {
 	return h.RCode == dnsmessage.RCodeNameError
 }
 
-func (r *TailscaleResolver) parseAandAAAA(resp []byte) (addrs []netip.Addr, ttl time.Duration, err error) {
+// parseAandAAAA extracts the A and AAAA answers from a DNS response, along with the smallest TTL among all records
+// It is shared by both resolvers: TailscaleResolver reads responses from the Tailscale LocalAPI, RemoteDNSResolver reads them off a TCP connection through the tunnel
+func parseAandAAAA(resp []byte) (addrs []netip.Addr, ttl time.Duration, err error) {
 	var p dnsmessage.Parser
 	_, err = p.Start(resp)
 	if err != nil {

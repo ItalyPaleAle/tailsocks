@@ -11,9 +11,9 @@ import (
 
 // startSocksProxy begins listening for SOCKS5 connections on addr, routing all traffic through the dialer
 // The returned listener should be closed to stop the server, and the returned channel is closed once the server stops serving
-func startSocksProxy(ctx context.Context, d *tailnetDialer, resolver socks5.NameResolver, addr string) (net.Listener, <-chan struct{}, error) {
+func startSocksProxy(ctx context.Context, d dialer, resolver socks5.NameResolver, addr string) (net.Listener, <-chan struct{}, error) {
 	socksConfig := &socks5.Config{
-		// The dialer routes the connection through tsnet's embedded netstack, so traffic goes via the exit node
+		// The dialer resolves the name and routes the connection through the active tunnel, so traffic goes via the exit node
 		Dial: d.Dial,
 		// go-socks5 resolves destination names itself and passes the resulting IP to Dial
 		Resolver: resolver,
