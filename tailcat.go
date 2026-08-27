@@ -21,7 +21,7 @@ import (
 const (
 	// Name of the file inside the state directory that holds the tailcat client identity
 	tailcatKeyFileName = "tailcat-key.json"
-	// Environment variable read when --tailcat is set to "-"
+	// Environment variable read when --experimental-tailcat is set to "-"
 	tailcatTokenEnvVar = "TAILSOCKS_TAILCAT_TOKEN" //nolint:gosec
 	// Prefix of the TXT record tailcat uses to publish a token under a DNS name
 	tailcatTXTPrefix = "tailcat="
@@ -79,6 +79,8 @@ func (t *tailcatTunnel) Close() error {
 
 // setupTailcat brings up the tailcat backend: it loads the token and the client identity, connects to the server, and returns the dialer and resolver the proxies run on
 func setupTailcat(ctx context.Context, opts *Options) (*backend, error) {
+	slog.Warn("tailcat mode is experimental: tailcat makes no stability promises for its API or its wire format, so this mode can change or break in a future release")
+
 	blob, err := loadTailcatToken(ctx, opts.Tailcat)
 	if err != nil {
 		return nil, err
@@ -157,13 +159,13 @@ func newTailcatResolver(opts *Options, tunnel *tailcatTunnel) socks5.NameResolve
 		return socks5.DNSResolver{}
 	}
 
-	// Queries go through the raw tunnel rather than through tunnelDialer: resolving the DNS server's own address would be circular, which is also why --tailcat-dns is required to be an IP
+	// Queries go through the raw tunnel rather than through tunnelDialer: resolving the DNS server's own address would be circular, which is also why --experimental-tailcat-dns is required to be an IP
 	slog.Info("Resolving DNS through the tailcat tunnel", "server", opts.TailcatDNS)
 
 	return NewRemoteDNSResolver(tunnel.Dial, opts.TailcatDNS)
 }
 
-// loadTailcatToken turns the value of --tailcat into a token
+// loadTailcatToken turns the value of --experimental-tailcat into a token
 // It accepts the token itself, "@path" to read it from a file, "-" to read it from the environment, or a DNS name whose "tailcat=" TXT record holds one
 func loadTailcatToken(ctx context.Context, arg string) (tailcat.ConnBlob, error) {
 	arg = strings.TrimSpace(arg)
@@ -176,7 +178,7 @@ func loadTailcatToken(ctx context.Context, arg string) (tailcat.ConnBlob, error)
 	case arg == "-":
 		raw = strings.TrimSpace(os.Getenv(tailcatTokenEnvVar))
 		if raw == "" {
-			return "", fmt.Errorf("--tailcat is '-' but the %s environment variable is empty", tailcatTokenEnvVar)
+			return "", fmt.Errorf("--experimental-tailcat is '-' but the %s environment variable is empty", tailcatTokenEnvVar)
 		}
 
 	case strings.HasPrefix(arg, "@"):
@@ -197,7 +199,7 @@ func loadTailcatToken(ctx context.Context, arg string) (tailcat.ConnBlob, error)
 	}
 
 	if !strings.HasPrefix(raw, tailcatTokenPrefix) {
-		return "", fmt.Errorf("value for --tailcat is not a tailcat token: expected it to start with '%s'", tailcatTokenPrefix)
+		return "", fmt.Errorf("value for --experimental-tailcat is not a tailcat token: expected it to start with '%s'", tailcatTokenPrefix)
 	}
 
 	blob := tailcat.ConnBlob(raw)
@@ -213,7 +215,7 @@ func loadTailcatToken(ctx context.Context, arg string) (tailcat.ConnBlob, error)
 func readTailcatTokenFile(path string) (string, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return "", errors.New("--tailcat is '@' with no file path after it")
+		return "", errors.New("--experimental-tailcat is '@' with no file path after it")
 	}
 
 	read, err := os.ReadFile(path) //nolint:gosec

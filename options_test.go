@@ -43,12 +43,12 @@ func TestParseFlagsRequiresExitNode(t *testing.T) {
 	_, err := parseArgs(t)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--exit-node")
-	assert.Contains(t, err.Error(), "--tailcat")
+	assert.Contains(t, err.Error(), "--experimental-tailcat")
 }
 
 // TestParseFlagsTailcatMode verifies that a token is enough to start, with no exit node and no auth
 func TestParseFlagsTailcatMode(t *testing.T) {
-	opts, err := parseArgs(t, "--tailcat", "tcsometoken")
+	opts, err := parseArgs(t, "--experimental-tailcat", "tcsometoken")
 	require.NoError(t, err)
 
 	assert.True(t, opts.TailcatMode())
@@ -70,10 +70,10 @@ func TestParseFlagsRejectsTailnetFlagsInTailcatMode(t *testing.T) {
 
 	for name, args := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, err := parseArgs(t, append([]string{"--tailcat", "tcsometoken"}, args...)...)
+			_, err := parseArgs(t, append([]string{"--experimental-tailcat", "tcsometoken"}, args...)...)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "--"+name)
-			assert.Contains(t, err.Error(), "--tailcat")
+			assert.Contains(t, err.Error(), "--experimental-tailcat")
 		})
 	}
 }
@@ -81,9 +81,9 @@ func TestParseFlagsRejectsTailnetFlagsInTailcatMode(t *testing.T) {
 // TestParseFlagsRejectsTailcatFlagsInTailnetMode verifies the mirror case, so a typo does not leave a setting quietly unused
 func TestParseFlagsRejectsTailcatFlagsInTailnetMode(t *testing.T) {
 	tests := map[string][]string{
-		"tailcat-key":         {"--tailcat-key", "new"},
-		"tailcat-dns":         {"--tailcat-dns", "9.9.9.9:53"},
-		"tailcat-derpmap-url": {"--tailcat-derpmap-url", "https://example.com/derpmap.json"},
+		"experimental-tailcat-key":         {"--experimental-tailcat-key", "new"},
+		"experimental-tailcat-dns":         {"--experimental-tailcat-dns", "9.9.9.9:53"},
+		"experimental-tailcat-derpmap-url": {"--experimental-tailcat-derpmap-url", "https://example.com/derpmap.json"},
 	}
 
 	for name, args := range tests {
@@ -91,14 +91,14 @@ func TestParseFlagsRejectsTailcatFlagsInTailnetMode(t *testing.T) {
 			_, err := parseArgs(t, append([]string{"--exit-node", "home-server"}, args...)...)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "--"+name)
-			assert.Contains(t, err.Error(), "requires --tailcat")
+			assert.Contains(t, err.Error(), "requires --experimental-tailcat")
 		})
 	}
 }
 
 // TestParseFlagsTailcatDNSMustBeIP verifies that a hostname is refused, since reaching the resolver would mean resolving it first
 func TestParseFlagsTailcatDNSMustBeIP(t *testing.T) {
-	_, err := parseArgs(t, "--tailcat", "tcsometoken", "--tailcat-dns", "dns.example.com:53")
+	_, err := parseArgs(t, "--experimental-tailcat", "tcsometoken", "--experimental-tailcat-dns", "dns.example.com:53")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ip:port")
 }
@@ -109,7 +109,7 @@ func TestParseFlagsTailcatDNSAcceptsIPs(t *testing.T) {
 
 	for _, server := range tests {
 		t.Run(server, func(t *testing.T) {
-			opts, err := parseArgs(t, "--tailcat", "tcsometoken", "--tailcat-dns", server)
+			opts, err := parseArgs(t, "--experimental-tailcat", "tcsometoken", "--experimental-tailcat-dns", server)
 			require.NoError(t, err)
 			assert.Equal(t, server, opts.TailcatDNS)
 		})
@@ -118,7 +118,7 @@ func TestParseFlagsTailcatDNSAcceptsIPs(t *testing.T) {
 
 // TestParseFlagsTailcatDNSIgnoredWithLocalDNS verifies that --local-dns turns off the check for a setting that is no longer used
 func TestParseFlagsTailcatDNSIgnoredWithLocalDNS(t *testing.T) {
-	opts, err := parseArgs(t, "--tailcat", "tcsometoken", "--local-dns", "--tailcat-dns", "not-an-address")
+	opts, err := parseArgs(t, "--experimental-tailcat", "tcsometoken", "--local-dns", "--experimental-tailcat-dns", "not-an-address")
 	require.NoError(t, err)
 	assert.True(t, opts.LocalDNS)
 }
@@ -144,7 +144,7 @@ func TestParseFlagsHelpAndVersionSkipValidation(t *testing.T) {
 
 // TestParseFlagsRequiresAProxy verifies that disabling both listeners is still refused
 func TestParseFlagsRequiresAProxy(t *testing.T) {
-	_, err := parseArgs(t, "--tailcat", "tcsometoken", "--socks-addr", "")
+	_, err := parseArgs(t, "--experimental-tailcat", "tcsometoken", "--socks-addr", "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "at least one of --socks-addr and --http-addr")
 }

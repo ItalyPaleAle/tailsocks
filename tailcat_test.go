@@ -117,7 +117,7 @@ func TestTailcatKeyUsesTailcatFormat(t *testing.T) {
 	assert.Equal(t, priv.Public().String(), stored.Private.Public().String())
 }
 
-// TestTailcatKeyAtExplicitPath verifies that --tailcat-key can point somewhere outside the state directory
+// TestTailcatKeyAtExplicitPath verifies that --experimental-tailcat-key can point somewhere outside the state directory
 func TestTailcatKeyAtExplicitPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "client-default.private.json")
 

@@ -238,12 +238,13 @@ tailcat prints a connection token to stdout. That token is all a client needs.
 ### On the client
 
 ```sh
-tailsocks --tailcat tc0oFwWCAOtDhylzp4vlxCiTg8bka4p7BGTkDR...
+tailsocks --experimental-tailcat tc0oFwWCAOtDhylzp4vlxCiTg8bka4p7BGTkDR...
 ```
 
 TailSocks logs the public key it presents on startup, which is what goes into the server's `--allow`:
 
 ```text
+level=WARN msg="tailcat mode is experimental: tailcat makes no stability promises for its API or its wire format, so this mode can change or break in a future release"
 level=INFO msg="Connecting to tailcat server" clientPublicKey=nodekey:cfb6bf...ddfd16 keyFile=./tsnet-state/tailcat-key.json
 ```
 
@@ -251,20 +252,20 @@ The SOCKS5 proxy, the HTTP proxy, and `--tcp` port forwards all work exactly as 
 
 ### Passing the token
 
-The token is a bearer credential, and command-line arguments are readable by other users on most systems. `--tailcat` accepts four forms:
+The token is a bearer credential, and command-line arguments are readable by other users on most systems. `--experimental-tailcat` accepts four forms:
 
 ```sh
 # The token itself
-tailsocks --tailcat tc0oFwWCAOtDhylz...
+tailsocks --experimental-tailcat tc0oFwWCAOtDhylz...
 
 # A file holding it
-tailsocks --tailcat @/etc/tailsocks/token
+tailsocks --experimental-tailcat @/etc/tailsocks/token
 
 # The TAILSOCKS_TAILCAT_TOKEN environment variable
-TAILSOCKS_TAILCAT_TOKEN=tc0oFwWCAOtDhylz... tailsocks --tailcat -
+TAILSOCKS_TAILCAT_TOKEN=tc0oFwWCAOtDhylz... tailsocks --experimental-tailcat -
 
 # A DNS name whose "tailcat=" TXT record holds it, the same convention tailcat's own CLI uses
-tailsocks --tailcat exit.example.com
+tailsocks --experimental-tailcat exit.example.com
 ```
 
 ### Client identity
@@ -273,17 +274,17 @@ The server's `--allow` list is keyed on the client's public key, so TailSocks pe
 
 ```sh
 # Keep it somewhere specific
-tailsocks --tailcat @/etc/tailsocks/token --tailcat-key /etc/tailsocks/client.private.json
+tailsocks --experimental-tailcat @/etc/tailsocks/token --experimental-tailcat-key /etc/tailsocks/client.private.json
 
 # Or use a throwaway identity, which the server has to allow anew every time
-tailsocks --tailcat @/etc/tailsocks/token --tailcat-key new
+tailsocks --experimental-tailcat @/etc/tailsocks/token --experimental-tailcat-key new
 ```
 
 The file format matches tailcat's own key files, so an existing one can be used directly:
 
 ```sh
 tailcat genkey --client
-tailsocks --tailcat @/etc/tailsocks/token --tailcat-key ~/.config/tailcat/keys/client-default.private.json
+tailsocks --experimental-tailcat @/etc/tailsocks/token --experimental-tailcat-key ~/.config/tailcat/keys/client-default.private.json
 ```
 
 ### DNS
@@ -292,19 +293,19 @@ There is no MagicDNS without a control plane, so names are resolved by querying 
 
 ```sh
 # Default
-tailsocks --tailcat @/etc/tailsocks/token --tailcat-dns 1.1.1.1:53
+tailsocks --experimental-tailcat @/etc/tailsocks/token --experimental-tailcat-dns 1.1.1.1:53
 
 # Use the exit node's own resolver, reached through its loopback interface
-tailsocks --tailcat @/etc/tailsocks/token --tailcat-dns 127.0.0.53:53
+tailsocks --experimental-tailcat @/etc/tailsocks/token --experimental-tailcat-dns 127.0.0.53:53
 
 # Use a resolver on the exit node's LAN, which also resolves its private names
-tailsocks --tailcat @/etc/tailsocks/token --tailcat-dns 192.168.1.1:53
+tailsocks --experimental-tailcat @/etc/tailsocks/token --experimental-tailcat-dns 192.168.1.1:53
 
 # Or resolve locally instead, which leaks every hostname to your own network
-tailsocks --tailcat @/etc/tailsocks/token --local-dns
+tailsocks --experimental-tailcat @/etc/tailsocks/token --local-dns
 ```
 
-`--tailcat-dns` takes an `ip:port` pair rather than a name, since resolving it would require a resolver to already be working.
+`--experimental-tailcat-dns` takes an `ip:port` pair rather than a name, since resolving it would require a resolver to already be working.
 
 ### Differences from tailnet mode
 
@@ -331,31 +332,31 @@ The client reaches the server through a DERP relay, then upgrades to a direct pa
 tailcat --serve=exit-node --derpmap-url https://derp.example.com/derpmap.json
 
 # Client
-tailsocks --tailcat @/etc/tailsocks/token --tailcat-derpmap-url https://derp.example.com/derpmap.json
+tailsocks --experimental-tailcat @/etc/tailsocks/token --experimental-tailcat-derpmap-url https://derp.example.com/derpmap.json
 ```
 
 ## Command-Line Options
 
 ```text
 Usage of tailsocks:
-  -k, --authkey string               Optional Tailscale auth key (or set TS_AUTHKEY env var; if omitted, loads from disk or prompts)
-  -e, --ephemeral                    Make this node ephemeral (auto-cleanup on disconnect)
-  -x, --exit-node string             Exit node selector: IP or MagicDNS base name (e.g. 'home-exit'). Required unless --tailcat is set.
-  -l, --exit-node-allow-lan-access   Allow access to local LAN while using exit node
-  -h, --help                         Show this help message
-  -n, --hostname string              Tailscale node name (hostname) (default "tailsocks")
-  -p, --http-addr string             HTTP proxy listen address (e.g. '127.0.0.1:5041'). Disabled when empty.
-      --local-dns                    Use local DNS resolver instead of resolving DNS through the tunnel
-  -c, --login-server string          Optional control server URL (e.g. https://controlplane.tld for Headscale)
-  -o, --oauth2                       Use OAuth2 credentials for authentication. When set, node is ephemeral by default.
-  -a, --socks-addr string            SOCKS5 listen address. Set to an empty value to disable the SOCKS5 proxy. (default "127.0.0.1:5040")
-  -s, --state-dir string             Directory to store tsnet state, or the tailcat client identity in tailcat mode (default "./tsnet-state")
-      --tailcat string               Connect through a tailcat server instead of joining a tailnet. Accepts a token, a DNS name whose "tailcat=" TXT record holds one, '@path/to/file', or '-' to read the TAILSOCKS_TAILCAT_TOKEN environment variable.
-      --tailcat-derpmap-url string   URL of the DERP map used to reach the tailcat server. Defaults to tailcat's own.
-      --tailcat-dns string           DNS server to query through the tailcat tunnel, as 'ip:port', so names resolve on the exit node's side. Ignored when --local-dns is set. (default "1.1.1.1:53")
-      --tailcat-key string           Path to the tailcat client identity, which the server allowlists with --allow. Defaults to 'tailcat-key.json' inside --state-dir, created on first run. Use 'new' for a throwaway key.
-  -t, --tcp strings                  Forward a local TCP port to a remote host through the exit node, in the form 'LISTEN=TARGET' (e.g. '127.0.0.1:3900=test.com:3900'). Can be repeated to forward multiple ports.
-  -v, --version                      Show version
+  -k, --authkey string                            Optional Tailscale auth key (or set TS_AUTHKEY env var; if omitted, loads from disk or prompts)
+  -e, --ephemeral                                 Make this node ephemeral (auto-cleanup on disconnect)
+  -x, --exit-node string                          Exit node selector: IP or MagicDNS base name (e.g. 'home-exit'). Required unless --experimental-tailcat is set.
+  -l, --exit-node-allow-lan-access                Allow access to local LAN while using exit node
+      --experimental-tailcat string               Experimental. Connect through a tailcat server instead of joining a tailnet. Accepts a token, a DNS name whose "tailcat=" TXT record holds one, '@path/to/file', or '-' to read the TAILSOCKS_TAILCAT_TOKEN environment variable.
+      --experimental-tailcat-derpmap-url string   URL of the DERP map used to reach the tailcat server. Defaults to tailcat's own.
+      --experimental-tailcat-dns string           DNS server to query through the tailcat tunnel, as 'ip:port', so names resolve on the exit node's side. Ignored when --local-dns is set. (default "1.1.1.1:53")
+      --experimental-tailcat-key string           Path to the tailcat client identity, which the server allowlists with --allow. Defaults to 'tailcat-key.json' inside --state-dir, created on first run. Use 'new' for a throwaway key.
+  -h, --help                                      Show this help message
+  -n, --hostname string                           Tailscale node name (hostname) (default "tailsocks")
+  -p, --http-addr string                          HTTP proxy listen address (e.g. '127.0.0.1:5041'). Disabled when empty.
+      --local-dns                                 Use local DNS resolver instead of resolving DNS through the tunnel
+  -c, --login-server string                       Optional control server URL (e.g. https://controlplane.tld for Headscale)
+  -o, --oauth2                                    Use OAuth2 credentials for authentication. When set, node is ephemeral by default.
+  -a, --socks-addr string                         SOCKS5 listen address. Set to an empty value to disable the SOCKS5 proxy. (default "127.0.0.1:5040")
+  -s, --state-dir string                          Directory to store tsnet state, or the tailcat client identity in tailcat mode (default "./tsnet-state")
+  -t, --tcp strings                               Forward a local TCP port to a remote host through the exit node, in the form 'LISTEN=TARGET' (e.g. '127.0.0.1:3900=test.com:3900'). Can be repeated to forward multiple ports.
+  -v, --version                                   Show version
 ```
 
 ## Configuring Applications
@@ -482,7 +483,7 @@ tailsocks --exit-node office --socks-addr 127.0.0.1:5041 --state-dir ./state-off
 
 **Names don't resolve in tailcat mode:**
 
-- The DNS server given to `--tailcat-dns` has to be reachable *from the exit node* and has to answer over TCP. Most resolvers do, but some LAN devices only listen on UDP
+- The DNS server given to `--experimental-tailcat-dns` has to be reachable *from the exit node* and has to answer over TCP. Most resolvers do, but some LAN devices only listen on UDP
 - Try `--local-dns` to confirm the tunnel itself is working, then fix the resolver separately
 
 ## License

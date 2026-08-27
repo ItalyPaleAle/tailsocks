@@ -12,14 +12,15 @@ import (
 )
 
 // Default DNS server queried through the tailcat tunnel
-// tailcat mode has no MagicDNS to fall back on, so a resolver has to be named somewhere; override it with --tailcat-dns, which also accepts the exit node's own resolver (for example 127.0.0.53:53) or one on its LAN
+// tailcat mode has no MagicDNS to fall back on, so a resolver has to be named somewhere; override it with --experimental-tailcat-dns, which also accepts the exit node's own resolver (for example 127.0.0.53:53) or one on its LAN
 const defaultTailcatDNS = "1.1.1.1:53"
 
 // Flags that only mean something when joining a tailnet
 var tailnetOnlyFlags = []string{"exit-node", "authkey", "oauth2", "login-server", "ephemeral", "hostname", "exit-node-allow-lan-access"}
 
 // Flags that only mean something when connecting through a tailcat server
-var tailcatOnlyFlags = []string{"tailcat-key", "tailcat-dns", "tailcat-derpmap-url"}
+// They carry an "experimental-" prefix because tailcat promises no stability for its API, its CLI or its wire format, so this mode may need breaking changes to keep up
+var tailcatOnlyFlags = []string{"experimental-tailcat-key", "experimental-tailcat-dns", "experimental-tailcat-derpmap-url"}
 
 // Options holds all CLI flag values
 type Options struct {
@@ -60,16 +61,16 @@ func ParseFlags() (*Options, error) {
 	pflag.StringVarP(&cfg.Hostname, "hostname", "n", "tailsocks", "Tailscale node name (hostname)")
 	pflag.StringVarP(&cfg.AuthKey, "authkey", "k", "", "Optional Tailscale auth key (or set TS_AUTHKEY env var; if omitted, loads from disk or prompts)")
 	pflag.BoolVarP(&cfg.OAuth2, "oauth2", "o", false, "Use OAuth2 credentials for authentication. When set, node is ephemeral by default.")
-	pflag.StringVarP(&cfg.ExitNode, "exit-node", "x", "", "Exit node selector: IP or MagicDNS base name (e.g. 'home-exit'). Required unless --tailcat is set.")
+	pflag.StringVarP(&cfg.ExitNode, "exit-node", "x", "", "Exit node selector: IP or MagicDNS base name (e.g. 'home-exit'). Required unless --experimental-tailcat is set.")
 	pflag.BoolVarP(&cfg.AllowLAN, "exit-node-allow-lan-access", "l", false, "Allow access to local LAN while using exit node")
 	pflag.StringSliceVarP(&cfg.TCPForwards, "tcp", "t", nil, "Forward a local TCP port to a remote host through the exit node, in the form 'LISTEN=TARGET' (e.g. '127.0.0.1:3900=test.com:3900'). Can be repeated to forward multiple ports.")
 	pflag.StringVarP(&cfg.LoginServer, "login-server", "c", "", "Optional control server URL (e.g. https://controlplane.tld for Headscale)")
 	pflag.BoolVarP(&ephemeral, "ephemeral", "e", false, "Make this node ephemeral (auto-cleanup on disconnect)")
 	pflag.BoolVar(&cfg.LocalDNS, "local-dns", false, "Use local DNS resolver instead of resolving DNS through the tunnel")
-	pflag.StringVar(&cfg.Tailcat, "tailcat", "", "Connect through a tailcat server instead of joining a tailnet. Accepts a token, a DNS name whose \"tailcat=\" TXT record holds one, '@path/to/file', or '-' to read the "+tailcatTokenEnvVar+" environment variable.")
-	pflag.StringVar(&cfg.TailcatKey, "tailcat-key", "", "Path to the tailcat client identity, which the server allowlists with --allow. Defaults to '"+tailcatKeyFileName+"' inside --state-dir, created on first run. Use 'new' for a throwaway key.")
-	pflag.StringVar(&cfg.TailcatDNS, "tailcat-dns", defaultTailcatDNS, "DNS server to query through the tailcat tunnel, as 'ip:port', so names resolve on the exit node's side. Ignored when --local-dns is set.")
-	pflag.StringVar(&cfg.TailcatDERPMapURL, "tailcat-derpmap-url", "", "URL of the DERP map used to reach the tailcat server. Defaults to tailcat's own.")
+	pflag.StringVar(&cfg.Tailcat, "experimental-tailcat", "", "Experimental. Connect through a tailcat server instead of joining a tailnet. Accepts a token, a DNS name whose \"tailcat=\" TXT record holds one, '@path/to/file', or '-' to read the "+tailcatTokenEnvVar+" environment variable.")
+	pflag.StringVar(&cfg.TailcatKey, "experimental-tailcat-key", "", "Path to the tailcat client identity, which the server allowlists with --allow. Defaults to '"+tailcatKeyFileName+"' inside --state-dir, created on first run. Use 'new' for a throwaway key.")
+	pflag.StringVar(&cfg.TailcatDNS, "experimental-tailcat-dns", defaultTailcatDNS, "DNS server to query through the tailcat tunnel, as 'ip:port', so names resolve on the exit node's side. Ignored when --local-dns is set.")
+	pflag.StringVar(&cfg.TailcatDERPMapURL, "experimental-tailcat-derpmap-url", "", "URL of the DERP map used to reach the tailcat server. Defaults to tailcat's own.")
 	pflag.BoolVarP(&cfg.ShowVersion, "version", "v", false, "Show version")
 	pflag.BoolVarP(&cfg.ShowHelp, "help", "h", false, "Show this help message")
 
@@ -117,12 +118,12 @@ func validateModeFlags(cfg *Options) error {
 	if !cfg.TailcatMode() {
 		for _, name := range tailcatOnlyFlags {
 			if pflag.CommandLine.Changed(name) {
-				return fmt.Errorf("--%s requires --tailcat", name)
+				return fmt.Errorf("--%s requires --experimental-tailcat", name)
 			}
 		}
 
 		if strings.TrimSpace(cfg.ExitNode) == "" {
-			return errors.New("missing --exit-node (IP like 100.x or MagicDNS base name); alternatively, use --tailcat to route through a tailcat server without joining a tailnet")
+			return errors.New("missing --exit-node (IP like 100.x or MagicDNS base name); alternatively, use --experimental-tailcat to route through a tailcat server without joining a tailnet")
 		}
 
 		return nil
@@ -130,7 +131,7 @@ func validateModeFlags(cfg *Options) error {
 
 	for _, name := range tailnetOnlyFlags {
 		if pflag.CommandLine.Changed(name) {
-			return fmt.Errorf("--%s cannot be used together with --tailcat: the tailcat server is the exit node, and there is no tailnet to join", name)
+			return fmt.Errorf("--%s cannot be used together with --experimental-tailcat: the tailcat server is the exit node, and there is no tailnet to join", name)
 		}
 	}
 
@@ -140,7 +141,7 @@ func validateModeFlags(cfg *Options) error {
 	if !cfg.LocalDNS {
 		_, err := netip.ParseAddrPort(cfg.TailcatDNS)
 		if err != nil {
-			return fmt.Errorf("invalid --tailcat-dns %q: expected an 'ip:port' pair such as %q: %w", cfg.TailcatDNS, defaultTailcatDNS, err)
+			return fmt.Errorf("invalid --experimental-tailcat-dns %q: expected an 'ip:port' pair such as %q: %w", cfg.TailcatDNS, defaultTailcatDNS, err)
 		}
 	}
 
