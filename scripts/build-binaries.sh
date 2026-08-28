@@ -72,9 +72,11 @@ echo -e "\n###\nBuilding ${goos}/${goarch}${goarm:+v${goarm}} into ${stage}\n"
 
 mkdir -p .out "${stage}"
 
+# ts_omit_ssh drops the SSH server that ships inside the tailcat package, which TailSocks never uses
 GOOS="${goos}" GOARCH="${goarch}" GOARM="${goarm}" \
   go build \
     -ldflags "${BUILD_LDFLAGS:-}" \
+    -tags ts_omit_ssh \
     -o "${stage}/tailsocks${ext}" \
     -trimpath \
     ./

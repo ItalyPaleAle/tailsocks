@@ -40,11 +40,7 @@ func main() {
 
 	setLogger()
 
-	if opts.ExitNode == "" {
-		kitslog.FatalError(slog.Default(), "missing --exit-node (IP like 100.x or MagicDNS base name)", errors.New("exit-node flag is required"))
-	}
-
-	// Parse TCP port-forwarding rules early so invalid input fails before we bring up the Tailscale node
+	// Parse TCP port-forwarding rules early so invalid input fails before we bring up the tunnel
 	forwards, err := ParsePortForwards(opts.TCPForwards)
 	if err != nil {
 		kitslog.FatalError(slog.Default(), "invalid --tcp port forward", err)
@@ -52,6 +48,91 @@ func main() {
 
 	ctx := signals.SignalContext(context.Background())
 
+	// Bring up the backend that carries every outbound connection
+	var b *backend
+	if opts.TailcatMode() {
+		b, err = setupTailcat(ctx, opts)
+	} else {
+		b, err = setupTailnet(ctx, opts)
+	}
+	if err != nil {
+		kitslog.FatalError(slog.Default(), "failed to start the tunnel", err)
+	}
+
+	tunnel := b.dial
+	resolver := b.resolver
+
+	// Start the SOCKS5 proxy, unless it's disabled
+	// ParseFlags guarantees at least one of the two proxies is enabled
+	var (
+		socksListener net.Listener
+		socksDone     <-chan struct{}
+	)
+	if opts.SocksAddr != "" {
+		warnIfNonLoopbackAddr("SOCKS5 proxy", opts.SocksAddr)
+
+		socksListener, socksDone, err = startSocksProxy(ctx, tunnel, resolver, opts.SocksAddr)
+		if err != nil {
+			kitslog.FatalError(slog.Default(), "failed to start SOCKS5 proxy", err)
+		}
+		slog.Info("SOCKS5 proxy listening", "addr", "socks5://"+socksListener.Addr().String())
+	}
+
+	// Start the HTTP proxy, if enabled
+	var httpServer *http.Server
+	if opts.HTTPAddr != "" {
+		warnIfNonLoopbackAddr("HTTP proxy", opts.HTTPAddr)
+
+		var httpAddr net.Addr
+		httpServer, httpAddr, err = startHTTPProxy(ctx, tunnel, opts.HTTPAddr)
+		if err != nil {
+			kitslog.FatalError(slog.Default(), "failed to start HTTP proxy", err)
+		}
+		slog.Info("HTTP proxy listening", "addr", "http://"+httpAddr.String())
+	}
+
+	// Start TCP port forwarders, if any
+	// Each dials its target through the active tunnel so traffic is routed via the exit node
+	forwardListeners := make([]net.Listener, len(forwards))
+	for i, pf := range forwards {
+		fl, ferr := startPortForward(ctx, tunnel, pf)
+		if ferr != nil {
+			kitslog.FatalError(slog.Default(), "failed to start TCP port forward", ferr)
+		}
+
+		forwardListeners[i] = fl
+		slog.Info("TCP port forward listening", "listen", pf.Listen, "target", pf.Target)
+	}
+
+	// Wait until either the context is canceled, or the SOCKS5 server has stopped serving
+	// When the SOCKS5 proxy is disabled socksDone is nil, and receiving from a nil channel blocks forever, so the context becomes the only way out
+	select {
+	case <-ctx.Done():
+	case <-socksDone:
+	}
+
+	slog.Info("Shutting down...")
+	if socksListener != nil {
+		_ = socksListener.Close()
+	}
+	if httpServer != nil {
+		stopHTTPProxy(httpServer)
+	}
+	for _, fl := range forwardListeners {
+		_ = fl.Close()
+	}
+	b.close()
+}
+
+// backend is what a mode provides to the rest of the process: a dialer that reaches the outside world, the resolver that feeds it names, and a way to shut it down
+type backend struct {
+	dial     dialer
+	resolver socks5.NameResolver
+	close    func()
+}
+
+// setupTailnet brings up the tsnet backend, which joins a tailnet and routes through one of its exit nodes
+func setupTailnet(ctx context.Context, opts *Options) (*backend, error) {
 	// Setup authentication
 	var (
 		authKey   string
@@ -88,27 +169,30 @@ func main() {
 	}
 
 	// Start tsnet by calling Up
-	_, err = s.Up(ctx)
+	_, err := s.Up(ctx)
 	if err != nil {
-		kitslog.FatalError(slog.Default(), "failed to start tsnet", err)
+		return nil, fmt.Errorf("failed to start tsnet: %w", err)
 	}
 
 	lc, err := s.LocalClient()
 	if err != nil {
-		kitslog.FatalError(slog.Default(), "LocalClient failed", err)
+		_ = s.Close()
+		return nil, fmt.Errorf("LocalClient failed: %w", err)
 	}
 
 	// Ensure we're logged in and have status
 	st, err := lc.Status(ctx)
 	if err != nil {
-		kitslog.FatalError(slog.Default(), "tailscale not running/authorized", err)
+		_ = s.Close()
+		return nil, fmt.Errorf("tailscale not running/authorized: %w", err)
 	}
 	slog.Info("Tailscale is up", "dnsName", st.Self.DNSName, "tailscaleIps", st.Self.TailscaleIPs)
 
 	// Configure exit node prefs
 	err = setExitNodePrefs(ctx, lc, opts.ExitNode, opts.AllowLAN)
 	if err != nil {
-		kitslog.FatalError(slog.Default(), "set exit node prefs failed", err)
+		_ = s.Close()
+		return nil, fmt.Errorf("set exit node prefs failed: %w", err)
 	}
 	slog.Info("Configured exit node", "exitNode", opts.ExitNode, "allowLanAccess", opts.AllowLAN)
 
@@ -133,68 +217,11 @@ func main() {
 		slog.Info("Using Tailscale DNS resolver", "magicDNSEnabled", magicDNSEnabled)
 	}
 
-	tsDialer := newTailnetDialer(s, resolver)
-
-	// Start the SOCKS5 proxy, unless it's disabled
-	// ParseFlags guarantees at least one of the two proxies is enabled
-	var (
-		socksListener net.Listener
-		socksDone     <-chan struct{}
-	)
-	if opts.SocksAddr != "" {
-		warnIfNonLoopbackAddr("SOCKS5 proxy", opts.SocksAddr)
-
-		socksListener, socksDone, err = startSocksProxy(ctx, tsDialer, resolver, opts.SocksAddr)
-		if err != nil {
-			kitslog.FatalError(slog.Default(), "failed to start SOCKS5 proxy", err)
-		}
-		slog.Info("SOCKS5 proxy listening", "addr", "socks5://"+socksListener.Addr().String())
-	}
-
-	// Start the HTTP proxy, if enabled
-	var httpServer *http.Server
-	if opts.HTTPAddr != "" {
-		warnIfNonLoopbackAddr("HTTP proxy", opts.HTTPAddr)
-
-		var httpAddr net.Addr
-		httpServer, httpAddr, err = startHTTPProxy(ctx, tsDialer, opts.HTTPAddr)
-		if err != nil {
-			kitslog.FatalError(slog.Default(), "failed to start HTTP proxy", err)
-		}
-		slog.Info("HTTP proxy listening", "addr", "http://"+httpAddr.String())
-	}
-
-	// Start TCP port forwarders, if any
-	// Each dials its target through tsnet's embedded netstack so traffic is routed via the exit node
-	forwardListeners := make([]net.Listener, len(forwards))
-	for i, pf := range forwards {
-		fl, ferr := startPortForward(ctx, tsDialer, pf)
-		if ferr != nil {
-			kitslog.FatalError(slog.Default(), "failed to start TCP port forward", ferr)
-		}
-
-		forwardListeners[i] = fl
-		slog.Info("TCP port forward listening", "listen", pf.Listen, "target", pf.Target)
-	}
-
-	// Wait until either the context is canceled, or the SOCKS5 server has stopped serving
-	// When the SOCKS5 proxy is disabled socksDone is nil, and receiving from a nil channel blocks forever, so the context becomes the only way out
-	select {
-	case <-ctx.Done():
-	case <-socksDone:
-	}
-
-	slog.Info("Shutting down...")
-	if socksListener != nil {
-		_ = socksListener.Close()
-	}
-	if httpServer != nil {
-		stopHTTPProxy(httpServer)
-	}
-	for _, fl := range forwardListeners {
-		_ = fl.Close()
-	}
-	_ = s.Close()
+	return &backend{
+		dial:     newTunnelDialer(s, resolver),
+		resolver: resolver,
+		close:    func() { _ = s.Close() },
+	}, nil
 }
 
 // getOAuth2AuthKey retrieves the OAuth2 auth key

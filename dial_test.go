@@ -34,14 +34,14 @@ func (r *stubResolver) resolved() []string {
 	return append([]string(nil), r.names...)
 }
 
-// TestTailnetDialerResolvesNames verifies that a hostname is resolved before being handed to the tunnel, so the tunnel only ever sees IP addresses
-func TestTailnetDialerResolvesNames(t *testing.T) {
+// TestTunnelDialerResolvesNames verifies that a hostname is resolved before being handed to the tunnel, so the tunnel only ever sees IP addresses
+func TestTunnelDialerResolvesNames(t *testing.T) {
 	resolver := &stubResolver{
 		ip: net.ParseIP("100.64.0.7"),
 	}
 	tunnel := &recordingDialer{}
 
-	d := newTailnetDialer(tunnel, resolver)
+	d := newTunnelDialer(tunnel, resolver)
 	_, err := d.Dial(t.Context(), "tcp", "service.tailnet.ts.net:8080")
 
 	// The dial itself fails because recordingDialer always fails, but the address it received is what matters here
@@ -50,9 +50,9 @@ func TestTailnetDialerResolvesNames(t *testing.T) {
 	assert.Equal(t, []string{"100.64.0.7:8080"}, tunnel.dialed())
 }
 
-// TestTailnetDialerSkipsResolutionForIPs verifies that an address that is already an IP is dialed without a lookup
+// TestTunnelDialerSkipsResolutionForIPs verifies that an address that is already an IP is dialed without a lookup
 // This is the common path for the SOCKS5 proxy, which resolves names itself before invoking the dialer
-func TestTailnetDialerSkipsResolutionForIPs(t *testing.T) {
+func TestTunnelDialerSkipsResolutionForIPs(t *testing.T) {
 	tests := []struct {
 		name string
 		addr string
@@ -77,7 +77,7 @@ func TestTailnetDialerSkipsResolutionForIPs(t *testing.T) {
 			}
 			tunnel := &recordingDialer{}
 
-			d := newTailnetDialer(tunnel, resolver)
+			d := newTunnelDialer(tunnel, resolver)
 			_, err := d.Dial(t.Context(), "tcp", tt.addr)
 
 			require.Error(t, err)
@@ -87,8 +87,8 @@ func TestTailnetDialerSkipsResolutionForIPs(t *testing.T) {
 	}
 }
 
-// TestTailnetDialerResolverFailure verifies that a failed lookup is reported instead of being dialed
-func TestTailnetDialerResolverFailure(t *testing.T) {
+// TestTunnelDialerResolverFailure verifies that a failed lookup is reported instead of being dialed
+func TestTunnelDialerResolverFailure(t *testing.T) {
 	tests := []struct {
 		name     string
 		resolver *stubResolver
@@ -111,7 +111,7 @@ func TestTailnetDialerResolverFailure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tunnel := &recordingDialer{}
 
-			d := newTailnetDialer(tunnel, tt.resolver)
+			d := newTunnelDialer(tunnel, tt.resolver)
 			_, err := d.Dial(t.Context(), "tcp", "service.example.com:443")
 
 			require.Error(t, err)
@@ -120,14 +120,14 @@ func TestTailnetDialerResolverFailure(t *testing.T) {
 	}
 }
 
-// TestTailnetDialerInvalidAddress verifies that an address without a port is rejected rather than resolved
-func TestTailnetDialerInvalidAddress(t *testing.T) {
+// TestTunnelDialerInvalidAddress verifies that an address without a port is rejected rather than resolved
+func TestTunnelDialerInvalidAddress(t *testing.T) {
 	resolver := &stubResolver{
 		ip: net.ParseIP("100.64.0.7"),
 	}
 	tunnel := &recordingDialer{}
 
-	d := newTailnetDialer(tunnel, resolver)
+	d := newTunnelDialer(tunnel, resolver)
 	_, err := d.Dial(t.Context(), "tcp", "service.example.com")
 
 	require.Error(t, err)
