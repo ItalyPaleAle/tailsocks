@@ -3,6 +3,7 @@
   "ignore": [
     "github.com/italypaleale/*",
     "golang.org/x/*",
-    "tailscale.com"
+    "tailscale.com",
+    "github.com/tailscale/tailcat"
   ]
 }

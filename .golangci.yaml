@@ -13,7 +13,8 @@ linters:
   default: all
 
   # Enable specific linters
-  enable: []
+  enable:
+    - gomodguard_v2
 
   exclusions:
     paths:
@@ -25,13 +26,16 @@ linters:
     - depguard
     - dupl
     - exhaustruct
+    - exhaustruct_v5
     - err113
     - funcorder
     - funlen
+    - goconst
     - gochecknoglobals
     - gochecknoinits
     - gocognit
     - godot
+    - gomodguard
     - ireturn
     - lll
     - mnd

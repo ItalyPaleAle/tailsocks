@@ -10,9 +10,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/italypaleale/go-kit/ttlcache"
 	"golang.org/x/net/dns/dnsmessage"
+	"golang.org/x/net/idna"
 	"tailscale.com/client/local"
 )
 
@@ -44,8 +46,11 @@ func NewTailscaleResolver(lc *local.Client, magicDNSSuffix string) *TailscaleRes
 // It resolves the given hostname to an IP address using Tailscale.
 // Results are cached for up to 5 minutes or the record's TTL, whichever is shorter.
 func (r *TailscaleResolver) Resolve(ctx context.Context, name string) (context.Context, net.IP, error) {
-	// Normalize the name so the cache key and DNS query agree regardless of casing or stray whitespace
-	name = strings.ToLower(strings.TrimSpace(name))
+	// Normalize the name so the cache key and DNS query agree regardless of casing, stray whitespace, or which form an internationalized name arrived in
+	name, err := normalizeDNSName(name)
+	if err != nil {
+		return ctx, nil, err
+	}
 
 	// Check cache first
 	cached, ok := r.cache.Get(name)
@@ -87,12 +92,12 @@ func (r *TailscaleResolver) Resolve(ctx context.Context, name string) (context.C
 	// When multiple records are returned, pick one at random to spread load across endpoints
 	if res.A.err == nil && len(res.A.records) > 0 {
 		ip := res.A.records[rand.IntN(len(res.A.records))].AsSlice() // #nosec G404 -- Random number is only used to pick an item from the slice
-		r.cache.Set(name, ip, clampCacheTTL(res.A.ttl))
+		r.cache.Set(name, ip, getCacheTTL(res.A.ttl))
 		return ctx, ip, nil
 	}
 	if res.AAAA.err == nil && len(res.AAAA.records) > 0 {
 		ip := res.AAAA.records[rand.IntN(len(res.AAAA.records))].AsSlice() // #nosec G404 -- Random number is only used to pick an item from the slice
-		r.cache.Set(name, ip, clampCacheTTL(res.AAAA.ttl))
+		r.cache.Set(name, ip, getCacheTTL(res.AAAA.ttl))
 		return ctx, ip, nil
 	}
 
@@ -115,7 +120,7 @@ func (r *TailscaleResolver) Resolve(ctx context.Context, name string) (context.C
 // - Uses tailscaled LocalAPI (QueryDNS), so it supports MagicDNS/split DNS
 func (r *TailscaleResolver) resolveDNS(ctx context.Context, name string, qt string) ([]netip.Addr, time.Duration, error) {
 	isShort := !strings.Contains(name, ".")
-	baseQname := r.ensureTrailingDot(name)
+	baseQname := ensureTrailingDot(name)
 
 	res, _, err := r.lc.QueryDNS(ctx, baseQname, qt)
 	if err != nil {
@@ -130,23 +135,23 @@ func (r *TailscaleResolver) resolveDNS(ctx context.Context, name string, qt stri
 		if err != nil {
 			return nil, 0, fmt.Errorf("QueryDNS(%q, %s): %w", expanded, qt, err)
 		}
-		addrs, ttl, err := r.parseAandAAAA(res2)
+		addrs, ttl, err := parseAandAAAA(res2)
 		if err != nil {
 			return nil, 0, fmt.Errorf("parse %s response (expanded): %w", qt, err)
 		}
 		return addrs, ttl, nil
 	}
 
-	addrs, ttl, err := r.parseAandAAAA(res)
+	addrs, ttl, err := parseAandAAAA(res)
 	if err != nil {
 		return nil, 0, fmt.Errorf("parse %s response: %w", qt, err)
 	}
 	return addrs, ttl, nil
 }
 
-// clampCacheTTL bounds a DNS-derived TTL to the range [minCacheTTL, maxCacheTTL] before it is handed to ttlcache.Set, which panics on TTLs below 1ms
+// getCacheTTL bounds a DNS-derived TTL to the range [minCacheTTL, maxCacheTTL] before it is handed to ttlcache.Set, which panics on TTLs below 1ms
 // Upstream DNS can legitimately return TTL=0 (e.g. CDN load-balancer records)
-func clampCacheTTL(ttl time.Duration) time.Duration {
+func getCacheTTL(ttl time.Duration) time.Duration {
 	if ttl < minCacheTTL {
 		return minCacheTTL
 	}
@@ -156,7 +161,36 @@ func clampCacheTTL(ttl time.Duration) time.Duration {
 	return ttl
 }
 
-func (r *TailscaleResolver) ensureTrailingDot(s string) string {
+// normalizeDNSName puts a hostname into the single form used both as a cache key and on the wire: trimmed, lowercased, and converted to punycode when it is internationalized
+// Clients normally send an already-encoded name, but nothing guarantees it: the SOCKS5 domain field carries whatever bytes the client chose, so it may need to be normalized
+func normalizeDNSName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+
+	if isASCII(name) {
+		return strings.ToLower(name), nil
+	}
+
+	encoded, err := idna.Lookup.ToASCII(name)
+	if err != nil {
+		return "", fmt.Errorf("invalid internationalized domain name '%s': %w", name, err)
+	}
+
+	return encoded, nil
+}
+
+// isASCII reports whether s contains only ASCII bytes
+func isASCII(s string) bool {
+	for i := range len(s) {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+
+	return true
+}
+
+// ensureTrailingDot turns a name into a fully qualified one, which is what the DNS wire format expects
+func ensureTrailingDot(s string) string {
 	if s == "" {
 		return "."
 	}
@@ -171,9 +205,9 @@ func (r *TailscaleResolver) expandWithSuffix(shortName, suffix string) string {
 	suffix = strings.TrimSpace(suffix)
 	suffix = strings.TrimSuffix(suffix, ".")
 	if suffix == "" {
-		return r.ensureTrailingDot(shortName)
+		return ensureTrailingDot(shortName)
 	}
-	return r.ensureTrailingDot(shortName + "." + suffix)
+	return ensureTrailingDot(shortName + "." + suffix)
 }
 
 func (r *TailscaleResolver) isNXDOMAIN(resp []byte) bool {
@@ -185,7 +219,9 @@ func (r *TailscaleResolver) isNXDOMAIN(resp []byte) bool {
 	return h.RCode == dnsmessage.RCodeNameError
 }
 
-func (r *TailscaleResolver) parseAandAAAA(resp []byte) (addrs []netip.Addr, ttl time.Duration, err error) {
+// parseAandAAAA extracts the A and AAAA answers from a DNS response, along with the smallest TTL among all records
+// It is shared by both resolvers: TailscaleResolver reads responses from the Tailscale LocalAPI, RemoteDNSResolver reads them off a TCP connection through the tunnel
+func parseAandAAAA(resp []byte) (addrs []netip.Addr, ttl time.Duration, err error) {
 	var p dnsmessage.Parser
 	_, err = p.Start(resp)
 	if err != nil {

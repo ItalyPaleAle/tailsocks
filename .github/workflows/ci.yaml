@@ -20,7 +20,7 @@ jobs:
     permissions:
       contents: read
     env:
-      GOLANGCI_LINT_VERSION: "v2.11.4"
+      GOLANGCI_LINT_VERSION: "v2.13.1"
       CGO_ENABLED: "0"
     steps:
 
@@ -53,7 +53,7 @@ jobs:
           mkdir -p .bin
 
           GOOS=linux GOARCH=amd64 \
-            go build -trimpath -o .bin/tailsocks-e2e ./
+            go build -trimpath -tags ts_omit_ssh -o .bin/tailsocks-e2e ./
 
       - name: Upload E2E binary artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
