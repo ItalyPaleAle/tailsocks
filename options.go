@@ -29,6 +29,8 @@ type Options struct {
 	SocksUser     string
 	SocksPassword string
 	HTTPAddr      string
+	HTTPUser      string
+	HTTPPassword  string
 	StateDir      string
 	Hostname      string
 	AuthKey       string
@@ -62,6 +64,8 @@ func ParseFlags() (*Options, error) {
 	pflag.StringVar(&cfg.SocksUser, "socks-user", "", "Username required to use the SOCKS5 proxy. Requires --socks-password (or TAILSOCKS_SOCKS_PASSWORD env var). Leave unset to allow unauthenticated access.")
 	pflag.StringVar(&cfg.SocksPassword, "socks-password", "", "Password required to use the SOCKS5 proxy (or set TAILSOCKS_SOCKS_PASSWORD env var, to avoid it appearing in shell history or process listings). Requires --socks-user.")
 	pflag.StringVarP(&cfg.HTTPAddr, "http-addr", "p", "", "HTTP proxy listen address (e.g. '127.0.0.1:5041'). Disabled when empty.")
+	pflag.StringVar(&cfg.HTTPUser, "http-user", "", "Username required to use the HTTP proxy. Requires --http-password (or TAILSOCKS_HTTP_PASSWORD env var). Leave unset to allow unauthenticated access.")
+	pflag.StringVar(&cfg.HTTPPassword, "http-password", "", "Password required to use the HTTP proxy (or set TAILSOCKS_HTTP_PASSWORD env var, to avoid it appearing in shell history or process listings). Requires --http-user.")
 	pflag.StringVarP(&cfg.StateDir, "state-dir", "s", "./tsnet-state", "Directory to store tsnet state, or the tailcat client identity in tailcat mode")
 	pflag.StringVarP(&cfg.Hostname, "hostname", "n", "tailsocks", "Tailscale node name (hostname)")
 	pflag.StringVarP(&cfg.AuthKey, "authkey", "k", "", "Optional Tailscale auth key (or set TS_AUTHKEY env var; if omitted, loads from disk or prompts)")

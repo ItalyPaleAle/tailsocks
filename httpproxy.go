@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +11,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"os"
+	"strings"
 	"time"
 )
 
@@ -22,6 +26,10 @@ const (
 	httpProxyShutdownTimeout = 5 * time.Second
 	// Port assumed for CONNECT requests whose target omits one
 	httpProxyDefaultConnectPort = "443"
+	// Realm advertised in the Proxy-Authenticate challenge
+	httpProxyAuthRealm = "tailsocks"
+	// Env var read for the HTTP proxy password when --http-password is not set, so the secret need not appear in shell history or process listings
+	httpProxyPasswordEnvVar = "TAILSOCKS_HTTP_PASSWORD" // #nosec G101 -- Not a credential, just the name of the env var
 )
 
 // httpProxy is an HTTP forward proxy that routes all traffic through the tailnet
@@ -32,15 +40,20 @@ type httpProxy struct {
 	dial         func(ctx context.Context, network string, addr string) (net.Conn, error)
 	reverseProxy *httputil.ReverseProxy
 	log          *slog.Logger
+	username     string
+	password     string
 }
 
 // newHTTPProxy creates an HTTP proxy handler that sends traffic through d
-func newHTTPProxy(d dialer) *httpProxy {
+// When username is non-empty, every request must present matching Basic credentials in the Proxy-Authorization header
+func newHTTPProxy(d dialer, username string, password string) *httpProxy {
 	log := slog.Default().With(slog.String("scope", "http"))
 
 	p := &httpProxy{
-		dial: d.Dial,
-		log:  log,
+		dial:     d.Dial,
+		log:      log,
+		username: username,
+		password: password,
 	}
 
 	p.reverseProxy = &httputil.ReverseProxy{
@@ -70,6 +83,13 @@ func newHTTPProxy(d dialer) *httpProxy {
 
 // ServeHTTP implements http.Handler
 func (p *httpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if p.username != "" && !p.authenticate(r) {
+		p.log.Debug("Rejected request with missing or invalid Proxy-Authorization", "method", r.Method, "remote", r.RemoteAddr)
+		w.Header().Set("Proxy-Authenticate", `Basic realm="`+httpProxyAuthRealm+`"`)
+		http.Error(w, "Proxy authentication required", http.StatusProxyAuthRequired)
+		return
+	}
+
 	if r.Method == http.MethodConnect {
 		p.handleConnect(w, r)
 		return
@@ -83,6 +103,40 @@ func (p *httpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	p.log.Debug("Forwarding request", "method", r.Method, "url", r.URL.String())
 	p.reverseProxy.ServeHTTP(w, r)
+}
+
+// authenticate reports whether r carries Basic credentials in Proxy-Authorization matching p.username and p.password
+// Comparisons are constant-time so a client cannot use response timing to guess a correct username or password one byte at a time
+func (p *httpProxy) authenticate(r *http.Request) bool {
+	user, pass, ok := parseProxyAuthorization(r.Header.Get("Proxy-Authorization"))
+	if !ok {
+		return false
+	}
+
+	userMatch := subtle.ConstantTimeCompare([]byte(user), []byte(p.username)) == 1
+	passMatch := subtle.ConstantTimeCompare([]byte(pass), []byte(p.password)) == 1
+	return userMatch && passMatch
+}
+
+// parseProxyAuthorization extracts the username and password from a Basic Proxy-Authorization header value
+// This mirrors http.Request.BasicAuth, which instead reads the Authorization header used by origin servers rather than proxies
+func parseProxyAuthorization(header string) (username string, password string, ok bool) {
+	const prefix = "Basic "
+	if !strings.HasPrefix(header, prefix) {
+		return "", "", false
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(header[len(prefix):])
+	if err != nil {
+		return "", "", false
+	}
+
+	username, password, ok = strings.Cut(string(decoded), ":")
+	if !ok {
+		return "", "", false
+	}
+
+	return username, password, true
 }
 
 // handleConnect establishes a tunnel to the requested target and pipes raw bytes in both directions
@@ -142,8 +196,9 @@ func (p *httpProxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 }
 
 // startHTTPProxy begins listening for HTTP proxy requests on addr, routing all traffic through d
+// When username is non-empty, clients must authenticate with matching Basic Proxy-Authorization credentials
 // It returns the server, which should be stopped with stopHTTPProxy, and the address it is actually bound to
-func startHTTPProxy(ctx context.Context, d dialer, addr string) (*http.Server, net.Addr, error) {
+func startHTTPProxy(ctx context.Context, d dialer, addr string, username string, password string) (*http.Server, net.Addr, error) {
 	nlc := net.ListenConfig{}
 	l, err := nlc.Listen(ctx, "tcp", addr)
 	if err != nil {
@@ -152,7 +207,7 @@ func startHTTPProxy(ctx context.Context, d dialer, addr string) (*http.Server, n
 
 	log := slog.Default().With(slog.String("scope", "http"))
 	srv := &http.Server{
-		Handler:           newHTTPProxy(d),
+		Handler:           newHTTPProxy(d, username, password),
 		ReadHeaderTimeout: httpProxyReadHeaderTimeout,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
@@ -179,4 +234,21 @@ func stopHTTPProxy(srv *http.Server) {
 	}
 
 	_ = srv.Close()
+}
+
+// resolveHTTPProxyAuth determines the HTTP proxy's Basic Auth credentials from --http-user and --http-password, falling back to the
+// TAILSOCKS_HTTP_PASSWORD environment variable for the password when --http-password is not set
+// It returns empty strings when authentication is not configured, and an error if only a username or only a password was supplied
+func resolveHTTPProxyAuth(opts *Options) (username string, password string, err error) {
+	username = strings.TrimSpace(opts.HTTPUser)
+	password = strings.TrimSpace(opts.HTTPPassword)
+	if password == "" {
+		password = strings.TrimSpace(os.Getenv(httpProxyPasswordEnvVar))
+	}
+
+	if (username == "") != (password == "") {
+		return "", "", fmt.Errorf("--http-user and --http-password (or %s) must both be set to enable HTTP proxy authentication", httpProxyPasswordEnvVar)
+	}
+
+	return username, password, nil
 }

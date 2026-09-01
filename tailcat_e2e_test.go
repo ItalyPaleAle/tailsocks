@@ -178,7 +178,7 @@ func TestTailcatEndToEnd(t *testing.T) {
 	})
 
 	t.Run("http proxy", func(t *testing.T) {
-		srv, addr, err := startHTTPProxy(t.Context(), b.dial, "127.0.0.1:0")
+		srv, addr, err := startHTTPProxy(t.Context(), b.dial, "127.0.0.1:0", "", "")
 		require.NoError(t, err)
 		defer stopHTTPProxy(srv)
 
