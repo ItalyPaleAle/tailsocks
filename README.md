@@ -228,7 +228,7 @@ Start tailcat as an exit node on the machine you want traffic to come out of, an
 
 ```sh
 # Print the client's public key by starting TailSocks once (see below), then:
-tailcat --serve=exit-node --allow=nodekey:cfb6bf...ddfd16
+tailcat serve --allow="nodekey:cfb6bf...ddfd16" exit-node
 ```
 
 tailcat prints a connection token to stdout: that token is all a client needs.
