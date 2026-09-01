@@ -160,7 +160,7 @@ func TestTailcatEndToEnd(t *testing.T) {
 	want := "reached " + target
 
 	t.Run("socks5 proxy", func(t *testing.T) {
-		ln, _, err := startSocksProxy(t.Context(), b.dial, b.resolver, "127.0.0.1:0")
+		ln, _, err := startSocksProxy(t.Context(), b.dial, b.resolver, "127.0.0.1:0", "", "")
 		require.NoError(t, err)
 		defer ln.Close() //nolint:errcheck
 
