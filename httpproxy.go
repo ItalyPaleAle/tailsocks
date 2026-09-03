@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"os"
 	"strings"
 	"time"
 )
@@ -28,8 +27,6 @@ const (
 	httpProxyDefaultConnectPort = "443"
 	// Realm advertised in the Proxy-Authenticate challenge
 	httpProxyAuthRealm = "tailsocks"
-	// Env var read for the HTTP proxy password when --http-password is not set, so the secret need not appear in shell history or process listings
-	httpProxyPasswordEnvVar = "TAILSOCKS_HTTP_PASSWORD" // #nosec G101 -- Not a credential, just the name of the env var
 )
 
 // httpProxy is an HTTP forward proxy that routes all traffic through the tailnet
@@ -234,21 +231,4 @@ func stopHTTPProxy(srv *http.Server) {
 	}
 
 	_ = srv.Close()
-}
-
-// resolveHTTPProxyAuth determines the HTTP proxy's Basic Auth credentials from --http-user and --http-password, falling back to the
-// TAILSOCKS_HTTP_PASSWORD environment variable for the password when --http-password is not set
-// It returns empty strings when authentication is not configured, and an error if only a username or only a password was supplied
-func resolveHTTPProxyAuth(opts *Options) (username string, password string, err error) {
-	username = strings.TrimSpace(opts.HTTPUser)
-	password = strings.TrimSpace(opts.HTTPPassword)
-	if password == "" {
-		password = strings.TrimSpace(os.Getenv(httpProxyPasswordEnvVar))
-	}
-
-	if (username == "") != (password == "") {
-		return "", "", fmt.Errorf("--http-user and --http-password (or %s) must both be set to enable HTTP proxy authentication", httpProxyPasswordEnvVar)
-	}
-
-	return username, password, nil
 }

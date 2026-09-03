@@ -46,14 +46,10 @@ func main() {
 		kitslog.FatalError(slog.Default(), "invalid --tcp port forward", err)
 	}
 
-	// Likewise, resolve each proxy's credentials early so a misconfigured user/password pair fails fast
-	httpUser, httpPassword, err := resolveHTTPProxyAuth(opts)
+	// Likewise, resolve the shared proxy credentials early so a bad --auth-password (e.g. an unreadable file) fails fast
+	proxyUser, proxyPassword, err := resolveProxyAuth(opts)
 	if err != nil {
-		kitslog.FatalError(slog.Default(), "invalid HTTP proxy authentication", err)
-	}
-	socksUser, socksPassword, err := resolveSocksAuth(opts)
-	if err != nil {
-		kitslog.FatalError(slog.Default(), "invalid SOCKS5 proxy authentication", err)
+		kitslog.FatalError(slog.Default(), "invalid --auth-password", err)
 	}
 
 	ctx := signals.SignalContext(context.Background())
@@ -79,26 +75,26 @@ func main() {
 		socksDone     <-chan struct{}
 	)
 	if opts.SocksAddr != "" {
-		warnIfNonLoopbackAddr("SOCKS5 proxy", opts.SocksAddr, socksUser != "")
+		warnIfNonLoopbackAddr("SOCKS5 proxy", opts.SocksAddr, proxyPassword != "")
 
-		socksListener, socksDone, err = startSocksProxy(ctx, tunnel, resolver, opts.SocksAddr, socksUser, socksPassword)
+		socksListener, socksDone, err = startSocksProxy(ctx, tunnel, resolver, opts.SocksAddr, proxyUser, proxyPassword)
 		if err != nil {
 			kitslog.FatalError(slog.Default(), "failed to start SOCKS5 proxy", err)
 		}
-		slog.Info("SOCKS5 proxy listening", "addr", "socks5://"+socksListener.Addr().String(), "authenticated", socksUser != "")
+		slog.Info("SOCKS5 proxy listening", "addr", "socks5://"+socksListener.Addr().String(), "authenticated", proxyPassword != "")
 	}
 
 	// Start the HTTP proxy, if enabled
 	var httpServer *http.Server
 	if opts.HTTPAddr != "" {
-		warnIfNonLoopbackAddr("HTTP proxy", opts.HTTPAddr, httpUser != "")
+		warnIfNonLoopbackAddr("HTTP proxy", opts.HTTPAddr, proxyPassword != "")
 
 		var httpAddr net.Addr
-		httpServer, httpAddr, err = startHTTPProxy(ctx, tunnel, opts.HTTPAddr, httpUser, httpPassword)
+		httpServer, httpAddr, err = startHTTPProxy(ctx, tunnel, opts.HTTPAddr, proxyUser, proxyPassword)
 		if err != nil {
 			kitslog.FatalError(slog.Default(), "failed to start HTTP proxy", err)
 		}
-		slog.Info("HTTP proxy listening", "addr", "http://"+httpAddr.String(), "authenticated", httpUser != "")
+		slog.Info("HTTP proxy listening", "addr", "http://"+httpAddr.String(), "authenticated", proxyPassword != "")
 	}
 
 	// Start TCP port forwarders, if any

@@ -7,14 +7,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"os"
-	"strings"
 
 	"github.com/armon/go-socks5"
 )
-
-// Env var read for the SOCKS5 password when --socks-password is not set, so the secret need not appear in shell history or process listings
-const socksPasswordEnvVar = "TAILSOCKS_SOCKS_PASSWORD" // #nosec G101 -- Not a credential, just the name of the env var
 
 // singleCredentialStore is a socks5.CredentialStore that accepts exactly one username/password pair
 // Comparisons are constant-time so a client cannot use response timing to guess a correct username or password one byte at a time
@@ -73,21 +68,4 @@ func startSocksProxy(ctx context.Context, d dialer, resolver socks5.NameResolver
 	}()
 
 	return l, doneCh, nil
-}
-
-// resolveSocksAuth determines the SOCKS5 proxy's username/password credentials from --socks-user and --socks-password, falling back to the
-// TAILSOCKS_SOCKS_PASSWORD environment variable for the password when --socks-password is not set
-// It returns empty strings when authentication is not configured, and an error if only a username or only a password was supplied
-func resolveSocksAuth(opts *Options) (username string, password string, err error) {
-	username = strings.TrimSpace(opts.SocksUser)
-	password = strings.TrimSpace(opts.SocksPassword)
-	if password == "" {
-		password = strings.TrimSpace(os.Getenv(socksPasswordEnvVar))
-	}
-
-	if (username == "") != (password == "") {
-		return "", "", fmt.Errorf("--socks-user and --socks-password (or %s) must both be set to enable SOCKS5 authentication", socksPasswordEnvVar)
-	}
-
-	return username, password, nil
 }

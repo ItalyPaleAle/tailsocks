@@ -106,20 +106,13 @@ tailsocks --exit-node home-server --exit-node-allow-lan-access
 
 #### SOCKS5 proxy authentication
 
-By default the SOCKS5 proxy accepts any client. Require a username and password with `--socks-user` and `--socks-password`:
+By default the SOCKS5 proxy accepts any client. Require a password with `--auth-password` (see [Proxy authentication](#proxy-authentication) below for the ways it can be supplied):
 
 ```sh
-tailsocks --exit-node home-server --socks-addr 0.0.0.0:5040 --socks-user alice --socks-password hunter2
+tailsocks --exit-node home-server --socks-addr 0.0.0.0:5040 --auth-password hunter2
 ```
 
-Both flags must be set together. As with the HTTP proxy below, you can set the password via the `TAILSOCKS_SOCKS_PASSWORD` environment variable instead of `--socks-password`, to avoid it showing up in shell history or `ps` output:
-
-```sh
-export TAILSOCKS_SOCKS_PASSWORD=hunter2
-tailsocks --exit-node home-server --socks-addr 0.0.0.0:5040 --socks-user alice
-```
-
-Clients authenticate with the SOCKS5 username/password method (RFC 1929); most SOCKS5 clients accept credentials embedded in the proxy URL, e.g. `socks5://alice:hunter2@127.0.0.1:5040`. A client with no or incorrect credentials is refused during the SOCKS5 handshake.
+Clients authenticate with the SOCKS5 username/password method (RFC 1929), using the fixed username `tailsocks`; most SOCKS5 clients accept credentials embedded in the proxy URL, e.g. `socks5://tailsocks:hunter2@127.0.0.1:5040`. A client with no or incorrect credentials is refused during the SOCKS5 handshake.
 
 ### HTTP Proxy
 
@@ -154,30 +147,33 @@ Both proxies can run at the same time and share the same exit node. To run the H
 tailsocks --exit-node home-server --http-addr 127.0.0.1:5041 --socks-addr ''
 ```
 
-> **Warning:** like the SOCKS5 proxy, the HTTP proxy is not authenticated by default. Binding it to a non-loopback address (e.g. `0.0.0.0`) exposes an open proxy to everyone who can reach that address, and TailSocks will log a warning when you do so unless you've configured authentication (see below, and [SOCKS5 proxy authentication](#socks5-proxy-authentication) above).
+> **Warning:** like the SOCKS5 proxy, the HTTP proxy is not authenticated by default. Binding it to a non-loopback address (e.g. `0.0.0.0`) exposes an open proxy to everyone who can reach that address, and TailSocks will log a warning when you do so unless you've configured authentication (see [Proxy authentication](#proxy-authentication) below).
 
 #### HTTP proxy authentication
 
-Require a username and password to use the HTTP proxy with `--http-user` and `--http-password`:
+Require a password to use the HTTP proxy with `--auth-password` (see [Proxy authentication](#proxy-authentication) below for the ways it can be supplied):
 
 ```sh
-tailsocks --exit-node home-server --http-addr 0.0.0.0:5041 --http-user alice --http-password hunter2
+tailsocks --exit-node home-server --http-addr 0.0.0.0:5041 --auth-password hunter2
 ```
 
-Both flags must be set together. To avoid the password showing up in shell history or `ps` output, set it via the `TAILSOCKS_HTTP_PASSWORD` environment variable instead of `--http-password`:
+Clients authenticate with standard HTTP proxy Basic Auth, using the fixed username `tailsocks`, either via credentials embedded in the proxy URL:
 
 ```sh
-export TAILSOCKS_HTTP_PASSWORD=hunter2
-tailsocks --exit-node home-server --http-addr 0.0.0.0:5041 --http-user alice
+export https_proxy=http://tailsocks:hunter2@127.0.0.1:5041
 ```
 
-Clients authenticate with standard HTTP proxy Basic Auth, either via credentials embedded in the proxy URL:
+or with a `Proxy-Authorization` header for tools that take the proxy URL and credentials separately. Unauthenticated or incorrectly authenticated requests receive a `407 Proxy Authentication Required` response. This applies to both `CONNECT` tunnels and plain requests.
 
-```sh
-export https_proxy=http://alice:hunter2@127.0.0.1:5041
-```
+#### Proxy authentication
 
-or with a `Proxy-Authorization` header for tools that take the proxy URL and credentials separately. Unauthenticated or incorrectly authenticated requests receive a `407 Proxy Authentication Required` response. This applies to both `CONNECT` tunnels and plain requests. The two proxies' credentials are independent of each other; see [SOCKS5 proxy authentication](#socks5-proxy-authentication) above to require credentials there too.
+`--auth-password` sets a single password shared by both the SOCKS5 and HTTP proxies, under the fixed username `tailsocks`. Leave it unset to allow unauthenticated access. It accepts:
+
+- The password itself: `--auth-password hunter2`
+- `-`, to read the password from stdin, e.g. `echo -n hunter2 | tailsocks --exit-node home-server --auth-password -`
+- `@path/to/file`, to read the password from a file: `--auth-password @/etc/tailsocks/password`
+
+Reading from stdin or a file avoids the password showing up in shell history or `ps` output. To pass it via an environment variable instead, expand it into the flag yourself, e.g. `--auth-password "$MY_PASSWORD"`.
 
 ### TCP Port Forwarding
 
@@ -380,6 +376,7 @@ tailsocks --experimental-tailcat @/etc/tailsocks/token --tailcat-derpmap-url htt
 
 ```text
 Usage of tailsocks:
+      --auth-password string          Password required to use the SOCKS5 and HTTP proxies, under the fixed username 'tailsocks'. Accepts the password itself, '-' to read it from stdin, or '@path/to/file' to read it from a file. Leave unset to allow unauthenticated access.
   -k, --authkey string                Optional Tailscale auth key (or set TS_AUTHKEY env var; if omitted, loads from disk or prompts)
   -e, --ephemeral                     Make this node ephemeral (auto-cleanup on disconnect)
   -x, --exit-node string              Exit node selector: IP or MagicDNS base name (e.g. 'home-exit'). Required unless --experimental-tailcat is set.
@@ -388,14 +385,10 @@ Usage of tailsocks:
   -h, --help                          Show this help message
   -n, --hostname string               Tailscale node name (hostname) (default "tailsocks")
   -p, --http-addr string              HTTP proxy listen address (e.g. '127.0.0.1:5041'). Disabled when empty.
-      --http-password string          Password required to use the HTTP proxy (or set TAILSOCKS_HTTP_PASSWORD env var, to avoid it appearing in shell history or process listings). Requires --http-user.
-      --http-user string              Username required to use the HTTP proxy. Requires --http-password (or TAILSOCKS_HTTP_PASSWORD env var). Leave unset to allow unauthenticated access.
       --local-dns                     Use local DNS resolver instead of resolving DNS through the tunnel
   -c, --login-server string           Optional control server URL (e.g. https://controlplane.tld for Headscale)
   -o, --oauth2                        Use OAuth2 credentials for authentication. When set, node is ephemeral by default.
   -a, --socks-addr string             SOCKS5 listen address. Set to an empty value to disable the SOCKS5 proxy. (default "127.0.0.1:5040")
-      --socks-password string         Password required to use the SOCKS5 proxy (or set TAILSOCKS_SOCKS_PASSWORD env var, to avoid it appearing in shell history or process listings). Requires --socks-user.
-      --socks-user string             Username required to use the SOCKS5 proxy. Requires --socks-password (or TAILSOCKS_SOCKS_PASSWORD env var). Leave unset to allow unauthenticated access.
   -s, --state-dir string              Directory to store tsnet state, or the tailcat client identity in tailcat mode (default "./tsnet-state")
       --tailcat-derpmap-url string    URL of the DERP map used to reach the tailcat server. Defaults to tailcat's own.
       --tailcat-dns string            DNS server to query through the tailcat tunnel, as 'ip:port', so names resolve on the exit node's side. Ignored when --local-dns is set. (default "1.1.1.1:53")
