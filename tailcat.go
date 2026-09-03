@@ -212,7 +212,7 @@ func newTailcatResolver(opts *Options, tunnel *tailcatTunnel) socks5.NameResolve
 
 // loadTailcatToken turns the value of --experimental-tailcat into a token
 // It accepts the token itself, "@path" to read it from a file, "-" to read it from the environment, or a DNS name whose "tailcat=" TXT record holds one
-func loadTailcatToken(ctx context.Context, arg string) (tailcat.ConnBlob, error) {
+func loadTailcatToken(ctx context.Context, arg string) (tailcat.Addr, error) {
 	arg = strings.TrimSpace(arg)
 
 	var (
@@ -247,8 +247,8 @@ func loadTailcatToken(ctx context.Context, arg string) (tailcat.ConnBlob, error)
 		return "", fmt.Errorf("value for --experimental-tailcat is not a tailcat token: expected it to start with '%s'", tailcatTokenPrefix)
 	}
 
-	blob := tailcat.ConnBlob(raw)
-	_, err = tailcat.ParseConnBlob(blob)
+	blob := tailcat.Addr(raw)
+	_, err = tailcat.ParseAddr(blob)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse the tailcat token: %w", err)
 	}

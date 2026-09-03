@@ -11,7 +11,7 @@ require (
 	github.com/mattn/go-isatty v0.0.24
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.12.1
-	github.com/tailscale/tailcat v0.4.0
+	github.com/tailscale/tailcat v0.5.0
 	golang.org/x/net v0.58.0
 	tailscale.com v1.103.0-pre.0.20260830144538-72780705eda8
 )

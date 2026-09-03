@@ -193,8 +193,8 @@ github.com/tailscale/netlink v1.1.1-0.20240822203006-4d49adab4de7 h1:uFsXVBE9Qr4
 github.com/tailscale/netlink v1.1.1-0.20240822203006-4d49adab4de7/go.mod h1:NzVQi3Mleb+qzq8VmcWpSkcSYxXIg0DkI6XDzpVkhJ0=
 github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc h1:24heQPtnFR+yfntqhI3oAu9i27nEojcQ4NuBQOo5ZFA=
 github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc/go.mod h1:f93CXfllFsO9ZQVq+Zocb1Gp4G5Fz0b0rXHLOzt/Djc=
-github.com/tailscale/tailcat v0.4.0 h1:WA8QIBcnn+x7BBmay3mPY+EeOp14RTQr4Qv1Df1GOxU=
-github.com/tailscale/tailcat v0.4.0/go.mod h1:ehG1UYhg+wPqPe8rlpmSyt9O+IMkBoxwA819l6qnM8Y=
+github.com/tailscale/tailcat v0.5.0 h1:yu4BO+e/NZj8V5fXysX+Jrt1tFXMYev8+BWIedY58hE=
+github.com/tailscale/tailcat v0.5.0/go.mod h1:ehG1UYhg+wPqPe8rlpmSyt9O+IMkBoxwA819l6qnM8Y=
 github.com/tailscale/web-client-prebuilt v0.0.0-20250124233751-d4cd19a26976 h1:UBPHPtv8+nEAy2PD8RyAhOYvau1ek0HDJqLS/Pysi14=
 github.com/tailscale/web-client-prebuilt v0.0.0-20250124233751-d4cd19a26976/go.mod h1:agQPE6y6ldqCOui2gkIh7ZMztTkIQKH049tv8siLuNQ=
 github.com/tailscale/wf v0.0.0-20240214030419-6fbb0a674ee6 h1:l10Gi6w9jxvinoiq15g8OToDdASBni4CyJOdHY1Hr8M=
