@@ -85,7 +85,7 @@ func runTestDERP(t *testing.T) *tailcfg.DERPRegion {
 }
 
 // runTailcatExitNode starts a tailcat server in the same shape as "tailcat --serve=exit-node" and returns its token
-func runTailcatExitNode(t *testing.T, reg *tailcfg.DERPRegion) tailcat.ConnBlob {
+func runTailcatExitNode(t *testing.T, reg *tailcfg.DERPRegion) tailcat.Addr {
 	t.Helper()
 
 	srv := &tailcat.Server{
@@ -110,7 +110,7 @@ func runTailcatExitNode(t *testing.T, reg *tailcfg.DERPRegion) tailcat.ConnBlob 
 	require.NoError(t, srv.Start())
 	t.Cleanup(func() { _ = srv.Close() })
 
-	return srv.ConnBlob()
+	return srv.TailcatAddr()
 }
 
 // TestTailcatEndToEnd runs the whole tailcat path: a real DERP relay, a real tailcat exit node, the real setupTailcat, and then each of the three things TailSocks exposes
@@ -265,7 +265,7 @@ func TestTailcatRejectsUnknownClient(t *testing.T) {
 	defer cancel()
 
 	_, err := setupTailcat(ctx, &Options{
-		Tailcat:    string(srv.ConnBlob()),
+		Tailcat:    string(srv.TailcatAddr()),
 		StateDir:   t.TempDir(),
 		TailcatDNS: "127.0.0.1:53",
 	})

@@ -19,7 +19,7 @@ func testToken(t *testing.T) string {
 	priv := tailcat.NewPrivateKey()
 	priv.Public.RegionID = 1
 
-	return string(priv.Public.ConnBlob())
+	return string(priv.Public.Addr())
 }
 
 // TestLoadTailcatTokenLiteral verifies that a token passed directly on the command line is accepted
