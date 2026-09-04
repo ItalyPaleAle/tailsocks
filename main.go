@@ -46,6 +46,12 @@ func main() {
 		kitslog.FatalError(slog.Default(), "invalid --tcp port forward", err)
 	}
 
+	// Likewise, resolve the shared proxy credentials early so a bad --auth-password (e.g. an unreadable file) fails fast
+	proxyUser, proxyPassword, err := resolveProxyAuth(opts)
+	if err != nil {
+		kitslog.FatalError(slog.Default(), "invalid --auth-password", err)
+	}
+
 	ctx := signals.SignalContext(context.Background())
 
 	// Bring up the backend that carries every outbound connection
@@ -69,26 +75,26 @@ func main() {
 		socksDone     <-chan struct{}
 	)
 	if opts.SocksAddr != "" {
-		warnIfNonLoopbackAddr("SOCKS5 proxy", opts.SocksAddr)
+		warnIfNonLoopbackAddr("SOCKS5 proxy", opts.SocksAddr, proxyPassword != "")
 
-		socksListener, socksDone, err = startSocksProxy(ctx, tunnel, resolver, opts.SocksAddr)
+		socksListener, socksDone, err = startSocksProxy(ctx, tunnel, resolver, opts.SocksAddr, proxyUser, proxyPassword)
 		if err != nil {
 			kitslog.FatalError(slog.Default(), "failed to start SOCKS5 proxy", err)
 		}
-		slog.Info("SOCKS5 proxy listening", "addr", "socks5://"+socksListener.Addr().String())
+		slog.Info("SOCKS5 proxy listening", "addr", "socks5://"+socksListener.Addr().String(), "authenticated", proxyPassword != "")
 	}
 
 	// Start the HTTP proxy, if enabled
 	var httpServer *http.Server
 	if opts.HTTPAddr != "" {
-		warnIfNonLoopbackAddr("HTTP proxy", opts.HTTPAddr)
+		warnIfNonLoopbackAddr("HTTP proxy", opts.HTTPAddr, proxyPassword != "")
 
 		var httpAddr net.Addr
-		httpServer, httpAddr, err = startHTTPProxy(ctx, tunnel, opts.HTTPAddr)
+		httpServer, httpAddr, err = startHTTPProxy(ctx, tunnel, opts.HTTPAddr, proxyUser, proxyPassword)
 		if err != nil {
 			kitslog.FatalError(slog.Default(), "failed to start HTTP proxy", err)
 		}
-		slog.Info("HTTP proxy listening", "addr", "http://"+httpAddr.String())
+		slog.Info("HTTP proxy listening", "addr", "http://"+httpAddr.String(), "authenticated", proxyPassword != "")
 	}
 
 	// Start TCP port forwarders, if any
@@ -282,11 +288,15 @@ func setLogger() {
 	slog.SetDefault(logger)
 }
 
-// warnIfNonLoopbackAddr logs a warning when a listener binds outside of loopback, since nothing TailSocks exposes is authenticated
-func warnIfNonLoopbackAddr(kind string, addr string) {
+// warnIfNonLoopbackAddr logs a warning when a listener binds outside of loopback and authenticated is false, since anyone who can reach that address can then use the proxy
+func warnIfNonLoopbackAddr(kind string, addr string, authenticated bool) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		slog.Warn(kind+" could not determine bind address security", "addr", addr, "error", err)
+		return
+	}
+
+	if authenticated {
 		return
 	}
 

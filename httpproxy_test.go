@@ -41,11 +41,18 @@ func (d *recordingDialer) dialed() []string {
 	return append([]string(nil), d.addrs...)
 }
 
-// startTestHTTPProxy starts an HTTP proxy on a random port and returns its URL
+// startTestHTTPProxy starts an unauthenticated HTTP proxy on a random port and returns its URL
 func startTestHTTPProxy(t *testing.T, d dialer) *url.URL {
 	t.Helper()
 
-	srv, addr, err := startHTTPProxy(t.Context(), d, "127.0.0.1:0")
+	return startTestHTTPProxyWithAuth(t, d, "", "")
+}
+
+// startTestHTTPProxyWithAuth starts an HTTP proxy on a random port, requiring username/password when either is non-empty, and returns its URL
+func startTestHTTPProxyWithAuth(t *testing.T, d dialer, username string, password string) *url.URL {
+	t.Helper()
+
+	srv, addr, err := startHTTPProxy(t.Context(), d, "127.0.0.1:0", username, password)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = srv.Close()
@@ -281,4 +288,93 @@ func TestHTTPProxyDialFailure(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadGateway, res.StatusCode)
 	assert.Equal(t, []string{"unreachable.example:8080"}, d.dialed())
+}
+
+// TestHTTPProxyAuthRejectsMissingCredentials ensures a request with no Proxy-Authorization header is rejected with 407 when auth is configured
+func TestHTTPProxyAuthRejectsMissingCredentials(t *testing.T) {
+	proxyURL := startTestHTTPProxyWithAuth(t, directDialer{}, "alice", "hunter2")
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+		},
+	}
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://example.com/", nil)
+	require.NoError(t, err)
+
+	res, err := client.Do(req)
+	require.NoError(t, err)
+	defer res.Body.Close() //nolint:errcheck
+
+	assert.Equal(t, http.StatusProxyAuthRequired, res.StatusCode)
+	assert.NotEmpty(t, res.Header.Get("Proxy-Authenticate"))
+}
+
+// TestHTTPProxyAuthRejectsWrongCredentials ensures a request with incorrect Proxy-Authorization credentials is rejected
+func TestHTTPProxyAuthRejectsWrongCredentials(t *testing.T) {
+	proxyURL := startTestHTTPProxyWithAuth(t, directDialer{}, "alice", "hunter2")
+	proxyURL.User = url.UserPassword("alice", "wrong-password")
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+		},
+	}
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://example.com/", nil)
+	require.NoError(t, err)
+
+	res, err := client.Do(req)
+	require.NoError(t, err)
+	defer res.Body.Close() //nolint:errcheck
+
+	assert.Equal(t, http.StatusProxyAuthRequired, res.StatusCode)
+}
+
+// TestHTTPProxyAuthAcceptsCorrectCredentials verifies that correct Proxy-Authorization credentials let a request through, for both plain requests and CONNECT tunnels
+func TestHTTPProxyAuthAcceptsCorrectCredentials(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("hello from target"))
+	}))
+	defer target.Close()
+
+	proxyURL := startTestHTTPProxyWithAuth(t, directDialer{}, "alice", "hunter2")
+	proxyURL.User = url.UserPassword("alice", "hunter2")
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+		},
+	}
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, target.URL, nil)
+	require.NoError(t, err)
+
+	res, err := client.Do(req)
+	require.NoError(t, err)
+	defer res.Body.Close() //nolint:errcheck
+
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	assert.Equal(t, "hello from target", string(body))
+}
+
+// TestHTTPProxyAuthAppliesToConnect ensures a CONNECT request is also rejected when it lacks valid credentials
+func TestHTTPProxyAuthAppliesToConnect(t *testing.T) {
+	echoAddr := startEchoServer(t)
+	proxyURL := startTestHTTPProxyWithAuth(t, directDialer{}, "alice", "hunter2")
+
+	conn, err := net.DialTimeout("tcp", proxyURL.Host, 5*time.Second) //nolint:noctx
+	require.NoError(t, err)
+	defer conn.Close() //nolint:errcheck
+
+	req := "CONNECT " + echoAddr + " HTTP/1.1\r\nHost: " + echoAddr + "\r\n\r\n"
+	_, err = conn.Write([]byte(req))
+	require.NoError(t, err)
+
+	err = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	require.NoError(t, err)
+
+	statusLine := readResponseHead(t, bufio.NewReader(conn))
+	assert.Contains(t, statusLine, "407")
 }

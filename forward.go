@@ -117,7 +117,7 @@ func startPortForward(ctx context.Context, d dialer, pf PortForward) (net.Listen
 	}
 
 	// Logs a warning when a forward listens on a non-loopback address
-	warnIfNonLoopbackAddr("TCP port forward", pf.Listen)
+	warnIfNonLoopbackAddr("TCP port forward", pf.Listen, false)
 
 	// Accept the connections and forward traffic
 	go acceptForwardConns(ctx, d, l, pf)
