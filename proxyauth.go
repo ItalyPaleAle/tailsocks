@@ -10,11 +10,10 @@ import (
 )
 
 // proxyAuthUsername is the only username accepted by the SOCKS5 and HTTP proxies when --auth-password is set
-// There is exactly one credential pair, so a configurable username would not add any security a client couldn't already get from the password alone
 const proxyAuthUsername = "tailsocks"
 
 // resolveProxyAuth turns --auth-password into the username/password pair shared by the SOCKS5 and HTTP proxies
-// It accepts the password itself, "-" to read it from stdin, or "@path/to/file" to read it from a file, so the secret need not appear in shell history or process listings
+// It accepts the password itself, "-" to read it from stdin, or "@path/to/file" to read it from a file
 // It returns empty strings when --auth-password is not set, meaning both proxies remain unauthenticated
 func resolveProxyAuth(opts *Options) (username string, password string, err error) {
 	raw := strings.TrimSpace(opts.AuthPassword)
@@ -26,7 +25,7 @@ func resolveProxyAuth(opts *Options) (username string, password string, err erro
 	case raw == "-":
 		password, err = readPasswordFromStdin()
 	case strings.HasPrefix(raw, "@"):
-		password, err = readPasswordFromFile(strings.TrimPrefix(raw, "@"))
+		password, err = readPasswordFromFile(raw[1:])
 	default:
 		password = raw
 	}
@@ -47,6 +46,7 @@ func readPasswordFromStdin() (string, error) {
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", fmt.Errorf("failed to read --auth-password from stdin: %w", err)
 	}
+
 	return strings.TrimSpace(line), nil
 }
 

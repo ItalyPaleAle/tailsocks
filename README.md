@@ -109,10 +109,10 @@ tailsocks --exit-node home-server --exit-node-allow-lan-access
 By default the SOCKS5 proxy accepts any client. Require a password with `--auth-password` (see [Proxy authentication](#proxy-authentication) below for the ways it can be supplied):
 
 ```sh
-tailsocks --exit-node home-server --socks-addr 0.0.0.0:5040 --auth-password hunter2
+tailsocks --exit-node home-server --socks-addr 0.0.0.0:5040 --auth-password my-password
 ```
 
-Clients authenticate with the SOCKS5 username/password method (RFC 1929), using the fixed username `tailsocks`; most SOCKS5 clients accept credentials embedded in the proxy URL, e.g. `socks5://tailsocks:hunter2@127.0.0.1:5040`. A client with no or incorrect credentials is refused during the SOCKS5 handshake.
+Clients authenticate with the SOCKS5 username/password method (RFC 1929), using the fixed username `tailsocks`. Most SOCKS5 clients accept credentials embedded in the proxy URL, e.g. `socks5://tailsocks:my-password@127.0.0.1:5040`.
 
 ### HTTP Proxy
 
@@ -154,26 +154,28 @@ tailsocks --exit-node home-server --http-addr 127.0.0.1:5041 --socks-addr ''
 Require a password to use the HTTP proxy with `--auth-password` (see [Proxy authentication](#proxy-authentication) below for the ways it can be supplied):
 
 ```sh
-tailsocks --exit-node home-server --http-addr 0.0.0.0:5041 --auth-password hunter2
+tailsocks --exit-node home-server --http-addr 0.0.0.0:5041 --auth-password my-password
 ```
 
 Clients authenticate with standard HTTP proxy Basic Auth, using the fixed username `tailsocks`, either via credentials embedded in the proxy URL:
 
 ```sh
-export https_proxy=http://tailsocks:hunter2@127.0.0.1:5041
+export https_proxy=http://tailsocks:my-password@127.0.0.1:5041
 ```
 
-or with a `Proxy-Authorization` header for tools that take the proxy URL and credentials separately. Unauthenticated or incorrectly authenticated requests receive a `407 Proxy Authentication Required` response. This applies to both `CONNECT` tunnels and plain requests.
+Alternatively, use a `Proxy-Authorization` header for tools that take the proxy URL and credentials separately.
+
+Unauthenticated or incorrectly authenticated requests receive a `407 Proxy Authentication Required` response. This applies to both `CONNECT` tunnels and plain requests.
 
 #### Proxy authentication
 
-`--auth-password` sets a single password shared by both the SOCKS5 and HTTP proxies, under the fixed username `tailsocks`. Leave it unset to allow unauthenticated access. It accepts:
+`--auth-password` sets a single password shared by both the SOCKS5 and HTTP proxies. The username is fixed as `tailsocks`. It accepts:
 
-- The password itself: `--auth-password hunter2`
-- `-`, to read the password from stdin, e.g. `echo -n hunter2 | tailsocks --exit-node home-server --auth-password -`
+- The password itself: `--auth-password my-password`
+- `-`, to read the password from stdin, e.g. `echo -n my-password | tailsocks --exit-node home-server --auth-password -`
 - `@path/to/file`, to read the password from a file: `--auth-password @/etc/tailsocks/password`
 
-Reading from stdin or a file avoids the password showing up in shell history or `ps` output. To pass it via an environment variable instead, expand it into the flag yourself, e.g. `--auth-password "$MY_PASSWORD"`.
+To pass it via an environment variable, expand it into the flag yourself, e.g. `--auth-password "$MY_PASSWORD"`.
 
 ### TCP Port Forwarding
 

@@ -12,7 +12,6 @@ import (
 )
 
 // singleCredentialStore is a socks5.CredentialStore that accepts exactly one username/password pair
-// Comparisons are constant-time so a client cannot use response timing to guess a correct username or password one byte at a time
 type singleCredentialStore struct {
 	username string
 	password string
