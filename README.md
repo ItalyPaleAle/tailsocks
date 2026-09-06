@@ -269,7 +269,7 @@ Start tailcat as an exit node on the machine you want traffic to come out of, an
 tailcat serve --allow="nodekey:cfb6bf...ddfd16" exit-node
 ```
 
-tailcat prints a connection token to stdout: that token is all a client needs.
+tailcat prints a connection token to stdout: that token is all a client needs. As of tailcat v0.6.0, the token also embeds a WireGuard pre-shared key by default, which makes it longer than before; pass `--psk=false` on the server to opt out and get the shorter, pre-v0.6.0 token format instead.
 
 > **Warning:** a tailcat exit node forwards TCP to *any* destination a client asks for, including its own LAN and its loopback interface. The token is a bearer credential: anyone holding it gets an unauthenticated route into that network. Always pass `--allow` with the public keys you intend to serve. There is no equivalent of Tailscale ACLs here.
 
@@ -360,7 +360,9 @@ tailsocks --experimental-tailcat @/etc/tailsocks/token --local-dns
 | Reaching other peers | The whole tailnet | Only the server, and whatever it forwards to |
 | Access control | Tailnet ACLs, device approval, tailnet lock | The server's `--allow` list |
 | LAN access on the exit node | `--exit-node-allow-lan-access` | Always on, not configurable |
-| UDP | Not supported | Not supported |
+| UDP | Not supported | Not supported\* |
+
+\* Since tailcat v0.6.0, the tailcat server and its Go client library can carry UDP flows, but TailSocks does not use that yet: its tailcat tunnel dialer only ever asks for TCP.
 
 ### Custom DERP
 
@@ -373,6 +375,8 @@ tailcat --serve=exit-node --derpmap-url https://derp.example.com/derpmap.json
 # Client
 tailsocks --experimental-tailcat @/etc/tailsocks/token --tailcat-derpmap-url https://derp.example.com/derpmap.json
 ```
+
+Since tailcat v0.6.0, `--derpmap-url` on the server also defaults from the `TAILCAT_DERPMAP_URL` environment variable, so it doesn't have to be passed on the command line.
 
 ## Command-Line Options
 
