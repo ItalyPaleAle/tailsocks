@@ -53,10 +53,13 @@ type tailcatTunnel struct {
 
 // Dial opens a connection to an already-resolved address through the tailcat server
 // tailcat maps IPv4 destinations into the NAT64 prefix itself, since the tunnel is IPv6-only
+//
+// Whether a UDP dial carries anything is up to the server: forwarding UDP is a capability a server opts into (tailcat.Server.OnUDPForward), and the stock "tailcat serve exit-node" wires up TCP forwarding only, so its packet filter drops UDP before any handler sees it
+// The dial still succeeds either way, since a UDP flow has no handshake to fail on: a server that does not forward UDP shows up as a read that never gets an answer, which is why the only caller (the DNS resolver) races UDP against TCP rather than trusting a successful dial
 func (t *tailcatTunnel) Dial(ctx context.Context, network string, addr string) (net.Conn, error) {
-	// A tailcat tunnel carries TCP only: its UDP dial path is deliberately unimplemented
-	if !strings.HasPrefix(network, "tcp") {
-		return nil, fmt.Errorf("unsupported network '%s': a tailcat tunnel carries TCP only", network)
+	udp := strings.HasPrefix(network, "udp")
+	if !udp && !strings.HasPrefix(network, "tcp") {
+		return nil, fmt.Errorf("unsupported network '%s': a tailcat tunnel carries TCP and UDP only", network)
 	}
 
 	// tunnelDialer resolves names before reaching this point, so addr always carries an IP
@@ -65,7 +68,12 @@ func (t *tailcatTunnel) Dial(ctx context.Context, network string, addr string) (
 		return nil, fmt.Errorf("invalid address '%s': %w", addr, err)
 	}
 
-	conn, err := t.cl.DialTCP(ctx, ap)
+	var conn net.Conn
+	if udp {
+		conn, err = t.cl.DialUDP(ctx, ap)
+	} else {
+		conn, err = t.cl.DialTCP(ctx, ap)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial '%s' through the tailcat server: %w", addr, err)
 	}

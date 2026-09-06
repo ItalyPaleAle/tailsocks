@@ -374,6 +374,8 @@ tailcat --serve=exit-node --derpmap-url https://derp.example.com/derpmap.json
 tailsocks --experimental-tailcat @/etc/tailsocks/token --tailcat-derpmap-url https://derp.example.com/derpmap.json
 ```
 
+Since tailcat v0.6.0, `--derpmap-url` on the server also defaults from the `TAILCAT_DERPMAP_URL` environment variable, so it doesn't have to be passed on the command line.
+
 ## Command-Line Options
 
 ```text

@@ -1,6 +1,6 @@
 module github.com/italypaleale/tailsocks
 
-go 1.27.0
+go 1.27.1
 
 tool github.com/fchimpan/gomod-age
 
@@ -11,9 +11,9 @@ require (
 	github.com/mattn/go-isatty v0.0.24
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.12.1
-	github.com/tailscale/tailcat v0.5.0
+	github.com/tailscale/tailcat v0.6.0
 	golang.org/x/net v0.58.0
-	tailscale.com v1.103.0-pre.0.20260830144538-72780705eda8
+	tailscale.com v1.103.0-pre.0.20260904030409-31d8badb3bfb
 )
 
 require (
@@ -54,7 +54,7 @@ require (
 	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd // indirect
 	github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc // indirect
 	github.com/tailscale/web-client-prebuilt v0.0.0-20250124233751-d4cd19a26976 // indirect
-	github.com/tailscale/wireguard-go v0.0.0-20260821191448-23d18d66172c // indirect
+	github.com/tailscale/wireguard-go v0.0.0-20260904023712-e855235c55a2 // indirect
 	github.com/u-root/u-root v0.14.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
