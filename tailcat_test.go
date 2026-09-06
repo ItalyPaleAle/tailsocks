@@ -160,22 +160,27 @@ func TestTailcatKeyRejectsGarbage(t *testing.T) {
 	assert.ErrorContains(t, err, "failed to parse")
 }
 
-// TestTailcatTunnelRejectsUDP verifies that a UDP dial is refused with a clear message rather than reaching tailcat's unimplemented UDP path
-func TestTailcatTunnelRejectsUDP(t *testing.T) {
+// TestTailcatTunnelRejectsUnknownNetwork verifies that a network the tunnel cannot carry is refused with a clear message, rather than reaching tailcat with something it has no dial path for
+func TestTailcatTunnelRejectsUnknownNetwork(t *testing.T) {
 	tunnel := &tailcatTunnel{}
 
-	_, err := tunnel.Dial(t.Context(), "udp", "203.0.113.1:53")
+	_, err := tunnel.Dial(t.Context(), "unix", "/run/nothing.sock")
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "TCP only")
+	assert.ErrorContains(t, err, "unsupported network")
 }
 
 // TestTailcatTunnelRequiresIP verifies that a name reaching the tunnel is rejected, since resolution happens one layer up in tunnelDialer
+// Running it for both networks also pins down that UDP is carried at all: an unsupported one would be refused before the address is ever looked at
 func TestTailcatTunnelRequiresIP(t *testing.T) {
 	tunnel := &tailcatTunnel{}
 
-	_, err := tunnel.Dial(t.Context(), "tcp", "example.com:443")
-	require.Error(t, err)
-	assert.ErrorContains(t, err, "invalid address")
+	for _, network := range []string{"tcp", "udp"} {
+		t.Run(network, func(t *testing.T) {
+			_, err := tunnel.Dial(t.Context(), network, "example.com:443")
+			require.Error(t, err)
+			assert.ErrorContains(t, err, "invalid address")
+		})
+	}
 }
 
 // TestTailcatVersionIsReported verifies that a real build reports an actual version, so the log line is never just "unknown" in practice

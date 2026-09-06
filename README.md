@@ -348,6 +348,20 @@ tailsocks --experimental-tailcat @/etc/tailsocks/token --local-dns
 
 `--tailcat-dns` takes an `ip:port` pair rather than a name.
 
+#### DNS transport
+
+Queries go over UDP where the tunnel carries it and over TCP where it does not, which TailSocks works out on its own: the first lookup asks both ways at once, and whichever the server answers on is used from then on. Nothing needs configuring, and there is no timeout to wait through when a server carries only one of them.
+
+Which one you get depends on the server, since forwarding UDP is something a tailcat server opts into. The stock `tailcat serve exit-node` forwards TCP alone and drops UDP at its packet filter, so TailSocks settles on TCP against it. A server built on tailcat's Go library that sets `OnUDPForward` carries both, and there UDP is usually what wins — which is what makes a resolver that listens on UDP alone reachable at all.
+
+The choice is logged once, when it is made:
+
+```text
+level=INFO msg="Selected the DNS transport through the tunnel" transport=tcp server=1.1.1.1:53
+```
+
+If the transport later stops answering, the next lookup goes back to trying both, so a server restarted with different forwarding is picked up without one having to restart TailSocks.
+
 ### Differences from tailnet mode
 
 | | Tailnet mode | tailcat mode |
@@ -360,9 +374,10 @@ tailsocks --experimental-tailcat @/etc/tailsocks/token --local-dns
 | Reaching other peers | The whole tailnet | Only the server, and whatever it forwards to |
 | Access control | Tailnet ACLs, device approval, tailnet lock | The server's `--allow` list |
 | LAN access on the exit node | `--exit-node-allow-lan-access` | Always on, not configurable |
-| UDP | Not supported | Not supported\* |
+| UDP for proxied traffic | Not supported | Not supported\* |
+| DNS over UDP | Not applicable, tailnet DNS is used | Yes, when the server forwards UDP |
 
-\* Since tailcat v0.6.0, the tailcat server and its Go client library can carry UDP flows, but TailSocks does not use that yet: its tailcat tunnel dialer only ever asks for TCP.
+\* Nothing you send through the proxies travels over UDP in either mode: the SOCKS5 server has no UDP `ASSOCIATE` command, and the HTTP proxy and `--tcp` forwards are TCP by nature. The tailcat tunnel itself does carry UDP as of tailcat v0.6.0, which is what resolution uses — see [DNS transport](#dns-transport) above.
 
 ### Custom DERP
 
@@ -528,7 +543,8 @@ tailsocks --exit-node office --socks-addr 127.0.0.1:5041 --state-dir ./state-off
 
 **Names don't resolve in tailcat mode:**
 
-- The DNS server given to `--tailcat-dns` has to be reachable *from the exit node* and has to answer over TCP. Most resolvers do, but some LAN devices only listen on UDP
+- The DNS server given to `--tailcat-dns` has to be reachable *from the exit node*
+- It also has to answer over whichever transport reaches it through the tunnel. Most resolvers answer over both, but a LAN device that listens on UDP alone is only reachable through a server that forwards UDP, which the stock `tailcat serve exit-node` does not — the `Selected the DNS transport through the tunnel` line says which one is in use, and see [DNS transport](#dns-transport)
 - Try `--local-dns` to confirm the tunnel itself is working, then fix the resolver separately
 
 ## License

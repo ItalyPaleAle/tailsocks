@@ -85,7 +85,21 @@ func runTestDERP(t *testing.T) *tailcfg.DERPRegion {
 }
 
 // runTailcatExitNode starts a tailcat server in the same shape as "tailcat --serve=exit-node" and returns its token
+// The stock CLI forwards TCP alone, which is what a client meets in practice: UDP is dropped at the server's packet filter rather than refused
 func runTailcatExitNode(t *testing.T, reg *tailcfg.DERPRegion) tailcat.Addr {
+	t.Helper()
+
+	return runTailcatServer(t, reg, false)
+}
+
+// runTailcatUDPExitNode starts an exit node that forwards UDP as well, which a server built on the tailcat library opts into by setting OnUDPForward
+func runTailcatUDPExitNode(t *testing.T, reg *tailcfg.DERPRegion) tailcat.Addr {
+	t.Helper()
+
+	return runTailcatServer(t, reg, true)
+}
+
+func runTailcatServer(t *testing.T, reg *tailcfg.DERPRegion, forwardUDP bool) tailcat.Addr {
 	t.Helper()
 
 	srv := &tailcat.Server{
@@ -104,6 +118,20 @@ func runTailcatExitNode(t *testing.T, reg *tailcfg.DERPRegion) tailcat.Addr {
 				return
 			}
 			tailcat.ProxyConns(c, local)
+		}
+	}
+
+	// Setting this is what admits UDP through the packet filter at all, so leaving it unset is what makes the server above TCP-only
+	if forwardUDP {
+		srv.OnUDPForward = func(dst netip.AddrPort) func(tailcat.ConnPacketConn) {
+			return func(c tailcat.ConnPacketConn) {
+				local, err := net.DialUDP("udp", nil, net.UDPAddrFromAddrPort(dst))
+				if err != nil {
+					_ = c.Close()
+					return
+				}
+				tailcat.ProxyPacketConns(c, local)
+			}
 		}
 	}
 
@@ -216,6 +244,55 @@ func TestTailcatEndToEnd(t *testing.T) {
 		_, err := net.DefaultResolver.LookupHost(t.Context(), "origin.private")
 		assert.Error(t, err)
 	})
+
+	t.Run("falls back to TCP against a server that does not forward UDP", func(t *testing.T) {
+		resolver, ok := b.resolver.(*RemoteDNSResolver)
+		require.True(t, ok)
+
+		// This exit node is shaped like the stock CLI, so its filter swallowed every datagram the resolver probed with and only TCP could ever have answered
+		assert.Equal(t, dnsTransportTCP, dnsTransport(resolver.transport.Load()))
+	})
+}
+
+// TestTailcatEndToEndUDPDNS resolves through a tailcat server that forwards UDP, which is the whole point of the tunnel carrying datagrams: a resolver that only listens on UDP is unreachable otherwise
+func TestTailcatEndToEndUDPDNS(t *testing.T) {
+	captureLogs(t)
+
+	// Names that resolve only through the tunnel
+	dns := newDNSStub(t)
+	dns.set("udp.private", dnsmessage.TypeA, netip.MustParseAddr("203.0.113.90"))
+	dns.set("pinned.private", dnsmessage.TypeA, netip.MustParseAddr("203.0.113.91"))
+
+	reg := runTestDERP(t)
+	token := runTailcatUDPExitNode(t, reg)
+
+	ctx, cancel := context.WithTimeout(t.Context(), e2eHandshakeTimeout)
+	defer cancel()
+
+	b, err := setupTailcat(ctx, &Options{
+		Tailcat:    string(token),
+		StateDir:   t.TempDir(),
+		TailcatDNS: dns.addr(),
+	})
+	require.NoError(t, err)
+	t.Cleanup(b.close)
+
+	resolver, ok := b.resolver.(*RemoteDNSResolver)
+	require.True(t, ok)
+
+	_, ip, err := resolver.Resolve(t.Context(), "udp.private")
+	require.NoError(t, err)
+	assert.Equal(t, "203.0.113.90", ip.String())
+
+	// The stub is reachable only from the far side of the tunnel, so datagrams arriving at it are proof the tunnel carried them
+	assert.Positive(t, dns.udpQueries.Load())
+
+	// Which transport wins a race between two working ones is a matter of timing, so pin it: this answer can only have come back over UDP
+	pinTransport(resolver, dnsTransportUDP)
+
+	_, ip, err = resolver.Resolve(t.Context(), "pinned.private")
+	require.NoError(t, err)
+	assert.Equal(t, "203.0.113.91", ip.String())
 }
 
 // TestTailcatReusesPersistedKey verifies that a second run presents the same identity to the server, without needing a live tunnel to check it
