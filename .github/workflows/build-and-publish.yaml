@@ -213,10 +213,15 @@ jobs:
 
           # An annotated tag carries a message; use it as the release notes.
           # A lightweight tag has no message, so fall back to auto-generated notes.
+          # Strip any Git signature block from the tag message so it doesn't leak into the release notes.
           notes_args=()
           tag_type=$(git tag -l --format='%(objecttype)' "${TAG}")
           if [[ "${tag_type}" == "tag" ]]; then
             tag_message=$(git tag -l --format='%(contents)' "${TAG}")
+            tag_signature=$(git tag -l --format='%(contents:signature)' "${TAG}")
+            if [[ -n "${tag_signature}" && "${tag_message}" == *"${tag_signature}" ]]; then
+              tag_message="${tag_message%"${tag_signature}"}"
+            fi
             if [[ -n "${tag_message}" ]]; then
               echo "Using tag annotation as release notes"
               notes_args=(--notes "${tag_message}")
