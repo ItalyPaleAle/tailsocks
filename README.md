@@ -360,7 +360,7 @@ tailsocks --experimental-tailcat @/etc/tailsocks/token --local-dns
 | Reaching other peers | The whole tailnet | Only the server, and whatever it forwards to |
 | Access control | Tailnet ACLs, device approval, tailnet lock | The server's `--allow` list |
 | LAN access on the exit node | `--exit-node-allow-lan-access` | Always on, not configurable |
-| UDP | Not supported | Not supported |
+| UDP | Not supported | Yes, once the server runs tailcat v0.7.0+ (`--serve=... exit-node` forwards UDP by default) |
 
 ### Custom DERP
 

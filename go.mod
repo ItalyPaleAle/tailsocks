@@ -11,9 +11,9 @@ require (
 	github.com/mattn/go-isatty v0.0.24
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.12.1
-	github.com/tailscale/tailcat v0.6.0
-	golang.org/x/net v0.58.0
-	tailscale.com v1.103.0-pre.0.20260904030409-31d8badb3bfb
+	github.com/tailscale/tailcat v0.7.0
+	golang.org/x/net v0.59.0
+	tailscale.com v1.103.0-pre.0.20260916030321-a2263542f260
 )
 
 require (
@@ -54,22 +54,22 @@ require (
 	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd // indirect
 	github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc // indirect
 	github.com/tailscale/web-client-prebuilt v0.0.0-20250124233751-d4cd19a26976 // indirect
-	github.com/tailscale/wireguard-go v0.0.0-20260904023712-e855235c55a2 // indirect
+	github.com/tailscale/wireguard-go v0.0.0-20260911194433-e3222a3340cd // indirect
 	github.com/u-root/u-root v0.14.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
 	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb // indirect
-	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/exp v0.0.0-20260820142414-ca536658362e // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/term v0.45.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/term v0.46.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
-	gvisor.dev/gvisor v0.0.0-20260224225140-573d5e7127a8 // indirect
+	gvisor.dev/gvisor v0.0.0-20260915211658-a6f909f08a72 // indirect
 	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3 // indirect
 )
