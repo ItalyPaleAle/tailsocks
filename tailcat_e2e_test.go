@@ -84,8 +84,7 @@ func runTestDERP(t *testing.T) *tailcfg.DERPRegion {
 	}
 }
 
-// runTailcatExitNode starts a tailcat server in the same shape as "tailcat --serve=exit-node" and returns its token
-// The stock CLI forwards TCP alone, which is what a client meets in practice: UDP is dropped at the server's packet filter rather than refused
+// runTailcatExitNode starts a tailcat server in the shape "tailcat --serve=exit-node" had before v0.7.0 added UDP forwarding, i.e. TCP only, which is still what a client meets against an older server or one that only sets OnTCPForward: UDP is dropped at the server's packet filter rather than refused
 func runTailcatExitNode(t *testing.T, reg *tailcfg.DERPRegion) tailcat.Addr {
 	t.Helper()
 
@@ -108,7 +107,7 @@ func runTailcatServer(t *testing.T, reg *tailcfg.DERPRegion, forwardUDP bool) ta
 		Logf:   testLogf(t, "exit-node"),
 	}
 
-	// This mirrors what the stock tailcat CLI installs for --serve=exit-node
+	// This mirrors the TCP forwarding the stock tailcat CLI installs for --serve=exit-node
 	srv.OnTCPForward = func(dst netip.AddrPort) func(net.Conn) {
 		return func(c net.Conn) {
 			var d net.Dialer
@@ -121,7 +120,7 @@ func runTailcatServer(t *testing.T, reg *tailcfg.DERPRegion, forwardUDP bool) ta
 		}
 	}
 
-	// Setting this is what admits UDP through the packet filter at all, so leaving it unset is what makes the server above TCP-only
+	// Setting this is what admits UDP through the packet filter at all, so leaving it unset is what makes the server above TCP-only, as the stock CLI's --serve=exit-node itself did before v0.7.0
 	if forwardUDP {
 		srv.OnUDPForward = func(dst netip.AddrPort) func(tailcat.ConnPacketConn) {
 			return func(c tailcat.ConnPacketConn) {

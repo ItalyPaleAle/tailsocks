@@ -271,7 +271,7 @@ tailcat serve --allow="nodekey:cfb6bf...ddfd16" exit-node
 
 tailcat prints a connection token to stdout: that token is all a client needs.
 
-> **Warning:** a tailcat exit node forwards TCP to *any* destination a client asks for, including its own LAN and its loopback interface. The token is a bearer credential: anyone holding it gets an unauthenticated route into that network. Always pass `--allow` with the public keys you intend to serve. There is no equivalent of Tailscale ACLs here.
+> **Warning:** a tailcat exit node forwards TCP, and since tailcat v0.7.0 also UDP, to *any* destination a client asks for, including its own LAN and its loopback interface. The token is a bearer credential: anyone holding it gets an unauthenticated route into that network. Always pass `--allow` with the public keys you intend to serve. There is no equivalent of Tailscale ACLs here.
 
 ### On the client
 
