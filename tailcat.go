@@ -54,7 +54,7 @@ type tailcatTunnel struct {
 // Dial opens a connection to an already-resolved address through the tailcat server
 // tailcat maps IPv4 destinations into the NAT64 prefix itself, since the tunnel is IPv6-only
 //
-// Whether a UDP dial carries anything is up to the server: forwarding UDP is a capability a server opts into (tailcat.Server.OnUDPForward), and the stock "tailcat serve exit-node" wires up TCP forwarding only, so its packet filter drops UDP before any handler sees it
+// Whether a UDP dial carries anything is up to the server: forwarding UDP is a capability a server opts into (tailcat.Server.OnUDPForward), and while tailcat's own "serve exit-node" has wired that up by default since v0.7.0, a server running an older tailcat, or a custom one built on the library, may still leave UDP unset, in which case its packet filter drops it before any handler sees it
 // The dial still succeeds either way, since a UDP flow has no handshake to fail on: a server that does not forward UDP shows up as a read that never gets an answer, which is why the only caller (the DNS resolver) races UDP against TCP rather than trusting a successful dial
 func (t *tailcatTunnel) Dial(ctx context.Context, network string, addr string) (net.Conn, error) {
 	udp := strings.HasPrefix(network, "udp")

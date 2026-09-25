@@ -165,7 +165,7 @@ func (r *RemoteDNSResolver) query(ctx context.Context, name string, qt dnsmessag
 
 // queryRace asks over UDP and TCP at the same time and takes whichever answers first, remembering it for the queries that follow
 //
-// Whether the tunnel carries UDP is up to the server: forwarding it is opt-in (tailcat.Server.OnUDPForward), and the stock "tailcat serve exit-node" forwards TCP alone, dropping UDP at its packet filter rather than refusing it
+// Whether the tunnel carries UDP is up to the server: forwarding it is opt-in (tailcat.Server.OnUDPForward), which tailcat's own "serve exit-node" has wired up by default since v0.7.0, but a server on an older tailcat, or a custom one built on the library, may still drop UDP at its packet filter rather than refusing it
 // Nothing in the protocol asks a server which it does, and a wrong guess costs a full timeout on every query, so the first one simply tries both and lets the server settle it
 func (r *RemoteDNSResolver) queryRace(ctx context.Context, name string, qt dnsmessage.Type) ([]netip.Addr, time.Duration, error) {
 	type raceResult struct {

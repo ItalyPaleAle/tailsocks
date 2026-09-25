@@ -318,7 +318,7 @@ func TestRemoteDNSResolverUsesUDP(t *testing.T) {
 	assert.Positive(t, stub.udpQueries.Load())
 }
 
-// TestRemoteDNSResolverFallsBackToTCP verifies that a server swallowing UDP is still resolved through, which is what the stock "tailcat serve exit-node" does: it forwards TCP only and drops UDP without refusing it
+// TestRemoteDNSResolverFallsBackToTCP verifies that a server swallowing UDP is still resolved through, which is what a tailcat exit node predating v0.7.0 (or a custom server that never sets OnUDPForward) does: it forwards TCP only and drops UDP without refusing it
 func TestRemoteDNSResolverFallsBackToTCP(t *testing.T) {
 	stub := newDNSStubModes(t, dnsStubAnswers, dnsStubDrops)
 	stub.set("example.com", dnsmessage.TypeA, netip.MustParseAddr("203.0.113.11"))
