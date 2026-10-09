@@ -6,13 +6,13 @@ tool github.com/fchimpan/gomod-age
 
 require (
 	github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5
-	github.com/italypaleale/go-kit v1.2.3
+	github.com/italypaleale/go-kit v1.2.4
 	github.com/lmittmann/tint v1.2.0
 	github.com/mattn/go-isatty v0.0.24
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.12.1
 	github.com/tailscale/tailcat v0.7.0
-	golang.org/x/net v0.59.0
+	golang.org/x/net v0.60.0
 	tailscale.com v1.104.1
 )
 
