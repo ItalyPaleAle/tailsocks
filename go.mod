@@ -13,7 +13,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/tailscale/tailcat v0.7.0
 	golang.org/x/net v0.60.0
-	tailscale.com v1.104.1
+	tailscale.com v1.104.2
 )
 
 require (
