@@ -16,7 +16,7 @@ jobs:
 
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     env:
@@ -65,7 +65,7 @@ jobs:
 
   e2e-matrix:
     name: E2E Matrix Config
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # Secrets are not available to workflows triggered by forked pull requests
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     outputs:
@@ -102,7 +102,7 @@ jobs:
 
   e2e:
     name: E2E
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs:
       - test
       - e2e-matrix
