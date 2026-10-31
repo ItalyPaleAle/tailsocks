@@ -20,7 +20,6 @@ jobs:
     permissions:
       contents: read
     env:
-      GOLANGCI_LINT_VERSION: "v2.13.1"
       CGO_ENABLED: "0"
     steps:
 
@@ -31,13 +30,10 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
-          # Use cache from golangci-lint
-          cache: false
 
       - name: Check Go dependency minimum age
         run: |
-          go install github.com/fchimpan/gomod-age@09005169a4792ad1a4824e1fc6d85785d91cea36
-          gomod-age
+          go tool gomod-age
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
