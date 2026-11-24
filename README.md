@@ -287,9 +287,6 @@ level=INFO msg="Connecting to tailcat server" clientPublicKey=nodekey:cfb6bf...d
 
 `tailcatVersion` is the tailcat library TailSocks was built against. Since tailcat is experimental and does not promise a stable wire format (yet), it is the first thing to compare against the server when a handshake fails.
 
-Since tailcat v0.8.0 a server can opt into an experimental hybrid post-quantum (ML-KEM-768) handshake, which is recorded in its token, so TailSocks needs no extra flag to use it.
-There is no fallback between handshake types, so a TailSocks built against an older tailcat rejects such a token.
-
 The SOCKS5 proxy, the HTTP proxy, and `--tcp` port forwards all work exactly as they do in tailnet mode.
 
 ### Passing the token
