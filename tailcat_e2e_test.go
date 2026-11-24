@@ -332,7 +332,9 @@ func TestTailcatRejectsUnknownClient(t *testing.T) {
 	srv := &tailcat.Server{Key: key.NewNode(), Region: reg, Logf: testLogf(t, "exit-node")}
 	srv.OnTCPForward = func(netip.AddrPort) func(net.Conn) { return nil }
 	// Allow one key that is not ours
-	srv.AddAllowedClient(key.NewNode().Public())
+	var allow tailcat.KeySet
+	allow.Add(key.NewNode().Public())
+	srv.AllowClient = allow.Contains
 	require.NoError(t, srv.Start())
 	t.Cleanup(func() { _ = srv.Close() })
 
